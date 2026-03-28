@@ -199,6 +199,30 @@ export async function getUniverse() {
   return apiFetch<{ symbols: string[] }>('/api/universe')
 }
 
+export async function setLineup(token: string, leagueId: string, starters: string[]) {
+  return apiFetch<Team>(`/api/leagues/${leagueId}/roster/set-lineup`, {
+    method: 'POST',
+    token,
+    body: JSON.stringify({ starters }),
+  })
+}
+
+export async function submitWaiver(
+  token: string,
+  leagueId: string,
+  addSymbol: string,
+  dropSymbol?: string,
+) {
+  return apiFetch<Team>(`/api/leagues/${leagueId}/waivers`, {
+    method: 'POST',
+    token,
+    body: JSON.stringify({
+      add_symbol: addSymbol,
+      ...(dropSymbol ? { drop_symbol: dropSymbol } : {}),
+    }),
+  })
+}
+
 export async function autoPick(id: string) {
   return apiFetch<DraftSession>(`/api/leagues/${id}/draft/auto-pick`, {
     method: 'POST',

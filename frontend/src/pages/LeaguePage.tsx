@@ -5,6 +5,7 @@ import {
   getLeague,
   getTeams,
   listJoinRequests,
+  oidString,
   type DraftSession,
   type JoinRequest,
   type League,
@@ -81,6 +82,12 @@ export function LeaguePage() {
     const t = setInterval(() => void refresh(), 5000)
     return () => clearInterval(t)
   }, [refresh])
+
+  const patchTeam = useCallback((updated: Team) => {
+    setTeams((prev) =>
+      prev.map((t) => (oidString(t._id) === oidString(updated._id) ? updated : t)),
+    )
+  }, [])
 
   if (!id) return null
 
@@ -173,7 +180,7 @@ export function LeaguePage() {
         <LeagueTab league={league} teams={teams} myTeam={myTeam} walletRef={walletRef} />
       )}
       {activeTab === 'roster' && (
-        <RosterTab teams={teams} myTeam={myTeam} walletRef={walletRef} league={league} />
+        <RosterTab id={id} token={token} teams={teams} myTeam={myTeam} walletRef={walletRef} league={league} patchTeam={patchTeam} />
       )}
       {activeTab === 'draft' && (
         <DraftTab

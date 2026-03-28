@@ -109,6 +109,7 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/api/leagues/:id/draft", get(get_draft))
         .route("/api/leagues/:id/draft/pick", post(draft_pick))
         .route("/api/leagues/:id/draft/auto-pick", post(auto_pick))
+        .route("/api/leagues/:id/roster/set-lineup", post(set_lineup))
         .route("/api/leagues/:id/waivers", post(submit_waiver))
         .route("/api/leagues/:id/scores", get(get_scores))
         .route("/api/chain/ix/init-league", get(chain_init_ix))
@@ -774,7 +775,7 @@ async fn draft_pick(
                 roster.push(RosterEntry {
                     symbol: p.symbol,
                     company_name: p.company_name,
-                    slot: RosterSlot::Starter,
+                    slot: RosterSlot::Bench,
                     acquired_at: chrono::Utc::now(),
                     source: "draft".into(),
                 });
@@ -954,47 +955,118 @@ async fn auto_pick(
     Ok(Json(session))
 }
 
+#[derive(Deserialize)]
+struct SetLineupBody {
+    starters: Vec<String>,
+}
+
+async fn set_lineup(
+    State(state): State<Arc<AppState>>,
+    AuthWallet(wallet): AuthWallet,
+    Path(id): Path<String>,
+    Json(body): Json<SetLineupBody>,
+) -> AppResult<Json<Team>> {
+    let league_oid = ObjectId::parse_str(&id).map_err(|_| AppError::BadRequest("bad id".into()))?;
+    let leagues = state.db.collection::<League>("leagues");
+    let league = leagues
+        .find_one(mongodb::bson::doc! { "_id": league_oid })
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+        .ok_or(AppError::NotFound)?;
+
+    let max_starters = league.settings.roster_size as usize;
+    if body.starters.len() > max_starters {
+        return Err(AppError::BadRequest(format!(
+            "too many starters (max {})", max_starters
+        )));
+    }
+
+    let teams_col = state.db.collection::<Team>("teams");
+    let mut team = teams_col
+        .find_one(mongodb::bson::doc! { "league_id": league_oid, "owner_wallet": &wallet })
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+        .ok_or(AppError::NotFound)?;
+
+    let starter_set: std::collections::HashSet<String> =
+        body.starters.iter().map(|s| s.to_uppercase()).collect();
+
+    for entry in &mut team.roster {
+        if starter_set.contains(&entry.symbol.to_uppercase()) {
+            entry.slot = RosterSlot::Starter;
+        } else {
+            entry.slot = RosterSlot::Bench;
+        }
+    }
+
+    teams_col
+        .replace_one(mongodb::bson::doc! { "_id": team.id }, &team)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    Ok(Json(team))
+}
+
 async fn submit_waiver(
     State(state): State<Arc<AppState>>,
     AuthWallet(wallet): AuthWallet,
     Path(id): Path<String>,
     Json(body): Json<WaiverBody>,
-) -> AppResult<Json<WaiverClaim>> {
-    let sym = body.add_symbol.to_uppercase();
-    if !fortune500::is_valid_symbol(&sym) {
+) -> AppResult<Json<Team>> {
+    let add_sym = body.add_symbol.to_uppercase();
+    if !fortune500::is_valid_symbol(&add_sym) {
         return Err(AppError::BadRequest("symbol not in universe".into()));
     }
     let league_oid = ObjectId::parse_str(&id).map_err(|_| AppError::BadRequest("bad id".into()))?;
     let teams_col = state.db.collection::<Team>("teams");
-    let team = teams_col
+    let mut team = teams_col
         .find_one(mongodb::bson::doc! { "league_id": league_oid, "owner_wallet": &wallet })
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?
         .ok_or(AppError::NotFound)?;
-    let n = state
-        .db
-        .collection::<WaiverClaim>("waivers")
-        .count_documents(mongodb::bson::doc! { "league_id": league_oid, "processed": false })
+
+    let mut all_teams_cur = teams_col
+        .find(mongodb::bson::doc! { "league_id": league_oid })
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
-    let claim = WaiverClaim {
-        id: None,
-        league_id: league_oid,
-        team_id: team.id.ok_or_else(|| AppError::Internal("team".into()))?,
-        add_symbol: sym,
-        drop_symbol: body.drop_symbol.map(|s| s.to_uppercase()),
-        submitted_at: chrono::Utc::now(),
-        priority: (n as u8).saturating_add(1),
-        processed: false,
-    };
-    let col = state.db.collection::<WaiverClaim>("waivers");
-    let res = col
-        .insert_one(&claim)
+    let mut all_rostered = std::collections::HashSet::new();
+    while let Some(t) = all_teams_cur
+        .try_next()
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+    {
+        for r in &t.roster {
+            all_rostered.insert(r.symbol.to_uppercase());
+        }
+    }
+    if all_rostered.contains(&add_sym) {
+        return Err(AppError::Conflict("company already rostered by a team".into()));
+    }
+
+    let drop_sym = body.drop_symbol.map(|s| s.to_uppercase());
+    if let Some(ref ds) = drop_sym {
+        let idx = team.roster.iter().position(|r| r.symbol.to_uppercase() == *ds);
+        if let Some(i) = idx {
+            team.roster.remove(i);
+        } else {
+            return Err(AppError::BadRequest("drop_symbol not on your roster".into()));
+        }
+    }
+
+    team.roster.push(RosterEntry {
+        symbol: add_sym.clone(),
+        company_name: add_sym.clone(),
+        slot: RosterSlot::Bench,
+        acquired_at: chrono::Utc::now(),
+        source: "waiver".into(),
+    });
+
+    teams_col
+        .replace_one(mongodb::bson::doc! { "_id": team.id }, &team)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
-    let mut claim = claim;
-    claim.id = res.inserted_id.as_object_id();
-    Ok(Json(claim))
+
+    Ok(Json(team))
 }
 
 async fn get_scores(
