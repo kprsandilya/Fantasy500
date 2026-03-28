@@ -5,3 +5,18 @@
     @apply bg-slate-950 text-slate-100 antialiased min-h-screen;
   }
 }
+
+@keyframes ticker-scroll {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+@layer utilities {
+  .animate-ticker-scroll {
+    animation: ticker-scroll 45s linear infinite;
+  }
+}

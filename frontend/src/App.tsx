@@ -10,6 +10,7 @@ import { BrowserRouter, Link, Route, Routes } from 'react-router-dom'
 import '@solana/wallet-adapter-react-ui/styles.css'
 import { AuthProvider, useAuth } from './AuthContext'
 import { endpoint, SOLANA_NETWORK } from './config'
+import { TickerBar } from './components/TickerBar'
 import { HomePage } from './pages/HomePage'
 import { LeaguePage } from './pages/LeaguePage'
 import { useFantasyWs } from './useFantasyWs'
@@ -55,6 +56,7 @@ function Shell() {
           </div>
         </div>
       </header>
+      <TickerBar />
       <main className="flex-1 max-w-5xl mx-auto px-4 py-8 w-full">
         <Routes>
           <Route path="/" element={<HomePage />} />
