@@ -18,6 +18,7 @@ mod fortune500;
 mod http;
 mod jwt;
 mod pick_commit;
+mod quotes;
 mod state;
 
 #[tokio::main]
