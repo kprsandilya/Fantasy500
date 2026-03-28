@@ -4,7 +4,7 @@ use axum::{
     extract::{Path, Query, State, WebSocketUpgrade},
     http::StatusCode,
     response::IntoResponse,
-    routing::{get, post},
+    routing::{get, patch, post},
     Json, Router,
 };
 use bson::oid::ObjectId;
@@ -65,6 +65,15 @@ pub struct WaiverBody {
 }
 
 #[derive(Deserialize)]
+pub struct UpdateLeagueBody {
+    pub name: Option<String>,
+    pub team_count: Option<u8>,
+    pub buy_in_lamports: Option<u64>,
+    pub snake_rounds: Option<u8>,
+    pub roster_size: Option<u8>,
+}
+
+#[derive(Deserialize)]
 pub struct ChainInitQuery {
     pub buy_in_lamports: u64,
     pub max_teams: u8,
@@ -86,8 +95,9 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/api/leagues", get(list_leagues).post(create_league))
         .route(
             "/api/leagues/:id",
-            get(get_league).delete(delete_league),
+            get(get_league).patch(update_league).delete(delete_league),
         )
+        .route("/api/leagues/:id/teams", get(get_teams))
         .route("/api/leagues/:id/join", post(join_league))
         .route("/api/leagues/:id/start-draft", post(start_draft))
         .route("/api/leagues/:id/draft", get(get_draft))
@@ -211,6 +221,91 @@ async fn get_league(
         .map_err(|e| AppError::Internal(e.to_string()))?
         .ok_or(AppError::NotFound)?;
     Ok(Json(league))
+}
+
+async fn update_league(
+    State(state): State<Arc<AppState>>,
+    AuthWallet(wallet): AuthWallet,
+    Path(id): Path<String>,
+    Json(body): Json<UpdateLeagueBody>,
+) -> AppResult<Json<League>> {
+    let oid = ObjectId::parse_str(&id).map_err(|_| AppError::BadRequest("bad id".into()))?;
+    let col = state.db.collection::<League>("leagues");
+    let league = col
+        .find_one(mongodb::bson::doc! { "_id": oid })
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+        .ok_or(AppError::NotFound)?;
+    require_commissioner(&wallet, &league.commissioner_wallet)?;
+    if league.status != LeagueStatus::Forming {
+        return Err(AppError::Conflict("can only edit a league that is still forming".into()));
+    }
+
+    let mut update_doc = mongodb::bson::Document::new();
+    if let Some(name) = &body.name {
+        update_doc.insert("name", name.as_str());
+    }
+    if let Some(tc) = body.team_count {
+        if tc < 2 || tc > 32 {
+            return Err(AppError::BadRequest("team_count must be between 2 and 32".into()));
+        }
+        update_doc.insert("team_count", tc as i32);
+    }
+    if let Some(bi) = body.buy_in_lamports {
+        update_doc.insert("buy_in_lamports", bi as i64);
+    }
+    if let Some(sr) = body.snake_rounds {
+        if sr == 0 || sr > 30 {
+            return Err(AppError::BadRequest("snake_rounds must be between 1 and 30".into()));
+        }
+        update_doc.insert("settings.snake_rounds", sr as i32);
+    }
+    if let Some(rs) = body.roster_size {
+        if rs == 0 || rs > 30 {
+            return Err(AppError::BadRequest("roster_size must be between 1 and 30".into()));
+        }
+        update_doc.insert("settings.roster_size", rs as i32);
+    }
+
+    if update_doc.is_empty() {
+        return Ok(Json(league));
+    }
+
+    col.update_one(
+        mongodb::bson::doc! { "_id": oid },
+        mongodb::bson::doc! { "$set": update_doc },
+    )
+    .await
+    .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    let updated = col
+        .find_one(mongodb::bson::doc! { "_id": oid })
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+        .ok_or(AppError::NotFound)?;
+    Ok(Json(updated))
+}
+
+async fn get_teams(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> AppResult<Json<Vec<Team>>> {
+    let league_oid = ObjectId::parse_str(&id).map_err(|_| AppError::BadRequest("bad id".into()))?;
+    let teams_col = state.db.collection::<Team>("teams");
+    let mut cur = teams_col
+        .find(mongodb::bson::doc! { "league_id": league_oid })
+        .sort(mongodb::bson::doc! { "draft_position": 1 })
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let mut out = Vec::new();
+    while let Some(t) = cur
+        .try_next()
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+    {
+        out.push(t);
+    }
+    Ok(Json(out))
 }
 
 async fn delete_league(

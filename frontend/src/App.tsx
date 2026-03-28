@@ -13,6 +13,7 @@ import { endpoint, SOLANA_NETWORK } from './config'
 import { TickerBar } from './components/TickerBar'
 import { HomePage } from './pages/HomePage'
 import { LeaguePage } from './pages/LeaguePage'
+import { DraftPage } from './pages/DraftPage'
 import { useFantasyWs } from './useFantasyWs'
 
 function Shell() {
@@ -61,6 +62,7 @@ function Shell() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/league/:id" element={<LeaguePage />} />
+          <Route path="/league/:id/draft" element={<DraftPage />} />
         </Routes>
       </main>
     </div>
