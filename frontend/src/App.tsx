@@ -18,7 +18,7 @@ import { useFantasyWs } from './useFantasyWs'
 
 function Shell() {
   const { token, signIn, signOut } = useAuth()
-  const wsPayload = useFantasyWs(Boolean(token))
+  const { connected } = useFantasyWs(Boolean(token))
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -36,8 +36,8 @@ function Shell() {
             {token ? (
               <>
                 <span className="hidden sm:inline-flex items-center gap-1.5 text-xs text-slate-500">
-                  <span className={`h-1.5 w-1.5 rounded-full ${wsPayload ? 'bg-emerald-500' : 'bg-slate-600 animate-pulse'}`} />
-                  {wsPayload ? 'Connected' : 'Connecting…'}
+                  <span className={`h-1.5 w-1.5 rounded-full ${connected ? 'bg-emerald-500' : 'bg-slate-600 animate-pulse'}`} />
+                  {connected ? 'Connected' : 'Connecting…'}
                 </span>
                 <button
                   type="button"

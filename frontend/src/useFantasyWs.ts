@@ -9,21 +9,25 @@ const wsUrl = () => {
 
 export function useFantasyWs(enabled: boolean) {
   const [last, setLast] = useState<string | null>(null)
+  const [connected, setConnected] = useState(false)
   const ref = useRef<WebSocket | null>(null)
 
   useEffect(() => {
-    if (!enabled) return
+    if (!enabled) {
+      setConnected(false)
+      return
+    }
     const ws = new WebSocket(wsUrl())
     ref.current = ws
+    ws.onopen = () => setConnected(true)
     ws.onmessage = (ev) => setLast(String(ev.data))
-    ws.onerror = () => {
-      /* dev */
-    }
+    ws.onclose = () => setConnected(false)
+    ws.onerror = () => { /* dev */ }
     return () => {
       ws.close()
       ref.current = null
     }
   }, [enabled])
 
-  return last
+  return { last, connected }
 }
