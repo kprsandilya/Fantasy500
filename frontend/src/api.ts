@@ -180,6 +180,18 @@ export async function rejectJoinRequest(token: string, leagueId: string, request
   })
 }
 
+export type QuoteItem = {
+  symbol: string
+  price: number
+  change: number
+  change_percent: number
+  market_state?: string
+}
+
+export async function getQuotes() {
+  return apiFetch<QuoteItem[]>('/api/quotes')
+}
+
 export async function startDraft(token: string, id: string) {
   return apiFetch<DraftSession>(`/api/leagues/${id}/start-draft`, {
     method: 'POST',

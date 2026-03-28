@@ -30,6 +30,7 @@ use crate::extract::{require_commissioner, AuthWallet};
 use crate::fortune500;
 use crate::jwt;
 use crate::pick_commit;
+use crate::quotes;
 use crate::state::AppState;
 
 #[derive(Deserialize)]
@@ -95,6 +96,7 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/api/auth/verify", post(verify))
         .route("/api/me", get(me))
         .route("/api/universe", get(universe))
+        .route("/api/quotes", get(live_quotes))
         .route("/api/leagues", get(list_leagues).post(create_league))
         .route(
             "/api/leagues/:id",
@@ -166,6 +168,13 @@ async fn me(AuthWallet(wallet): AuthWallet) -> AppResult<Json<serde_json::Value>
 async fn universe() -> AppResult<Json<serde_json::Value>> {
     let list: Vec<&str> = fortune500::universe().iter().map(|s| s.as_str()).collect();
     Ok(Json(json!({ "symbols": list })))
+}
+
+async fn live_quotes(
+    State(state): State<Arc<AppState>>,
+) -> AppResult<Json<Vec<quotes::QuoteItem>>> {
+    let items = quotes::get_quotes(&state).await;
+    Ok(Json(items))
 }
 
 async fn list_leagues(State(state): State<Arc<AppState>>) -> AppResult<Json<Vec<League>>> {
