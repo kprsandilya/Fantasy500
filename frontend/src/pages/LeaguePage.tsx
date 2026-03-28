@@ -181,44 +181,46 @@ export function LeaguePage() {
       </nav>
 
       {/* Tab content */}
-      {activeTab === 'league' && (
-        <LeagueTab league={league} teams={teams} myTeam={myTeam} walletRef={walletRef} scores={scores} />
-      )}
-      {activeTab === 'roster' && (
-        <RosterTab id={id} token={token} teams={teams} myTeam={myTeam} walletRef={walletRef} league={league} patchTeam={patchTeam} />
-      )}
-      {activeTab === 'draft' && (
-        <DraftTab
-          id={id}
-          token={token}
-          league={league}
-          draft={draft}
-          teams={teams}
-          joinRequests={joinRequests}
-          isCommissioner={isCommissioner}
-          myTeam={myTeam}
-          walletRef={walletRef}
-          msg={msg}
-          setMsg={setMsg}
-          refresh={refresh}
-          joinedCount={joinedCount}
-          maxTeams={maxTeams}
-        />
-      )}
-      {activeTab === 'matchup' && (
-        <MatchupTab teams={teams} league={league} myTeam={myTeam} scores={scores} />
-      )}
-      {activeTab === 'settings' && (
-        <SettingsTab
-          id={id}
-          token={token}
-          league={league}
-          setLeague={setLeague}
-          isCommissioner={isCommissioner}
-          joinedCount={joinedCount}
-          maxTeams={maxTeams}
-        />
-      )}
+      <div className="pt-4">
+        {activeTab === 'league' && (
+          <LeagueTab league={league} teams={teams} myTeam={myTeam} walletRef={walletRef} scores={scores} />
+        )}
+        {activeTab === 'roster' && (
+          <RosterTab id={id} token={token} teams={teams} myTeam={myTeam} walletRef={walletRef} league={league} patchTeam={patchTeam} />
+        )}
+        {activeTab === 'draft' && (
+          <DraftTab
+            id={id}
+            token={token}
+            league={league}
+            draft={draft}
+            teams={teams}
+            joinRequests={joinRequests}
+            isCommissioner={isCommissioner}
+            myTeam={myTeam}
+            walletRef={walletRef}
+            msg={msg}
+            setMsg={setMsg}
+            refresh={refresh}
+            joinedCount={joinedCount}
+            maxTeams={maxTeams}
+          />
+        )}
+        {activeTab === 'matchup' && (
+          <MatchupTab teams={teams} league={league} myTeam={myTeam} scores={scores} />
+        )}
+        {activeTab === 'settings' && (
+          <SettingsTab
+            id={id}
+            token={token}
+            league={league}
+            setLeague={setLeague}
+            isCommissioner={isCommissioner}
+            joinedCount={joinedCount}
+            maxTeams={maxTeams}
+          />
+        )}
+      </div>
 
       {msg && <p className="text-sm text-amber-300">{msg}</p>}
     </div>
