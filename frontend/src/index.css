@@ -10,6 +10,8 @@
   --animate-ticker-scroll: ticker-scroll 1200s linear infinite;
   --animate-on-clock: pulse-clock 2s ease-in-out infinite;
   --animate-pick-in: slide-in-pick 0.3s ease-out both;
+  --animate-float-slow: float-slow 8s ease-in-out infinite;
+  --animate-float-slow-reverse: float-slow-reverse 9s ease-in-out infinite;
 }
 
 @keyframes ticker-scroll {
@@ -25,6 +27,16 @@
 @keyframes slide-in-pick {
   from { opacity: 0; transform: translateY(-6px) scale(0.97); }
   to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes float-slow {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-12px) rotate(1deg); }
+}
+
+@keyframes float-slow-reverse {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(10px) rotate(-1deg); }
 }
 
 @utility draft-grid {

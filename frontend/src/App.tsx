@@ -22,25 +22,27 @@ function Shell() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-10">
+      <header className="border-b border-slate-800/60 bg-slate-950/80 backdrop-blur-xl sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
-          <Link to="/" className="font-semibold tracking-tight text-emerald-400">
-            Fantasy500
+          <Link to="/" className="flex items-center gap-2 group">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-600 text-xs font-black text-white shadow-md shadow-emerald-900/30">
+              F5
+            </div>
+            <span className="font-bold tracking-tight text-white group-hover:text-emerald-400 transition-colors">
+              Fantasy500
+            </span>
           </Link>
           <div className="flex items-center gap-3 text-sm">
             {token ? (
               <>
-                <span className="text-slate-400 hidden sm:inline">Live</span>
-                <span
-                  className="truncate max-w-[12rem] text-slate-300"
-                  title={wsPayload ?? ''}
-                >
-                  {wsPayload ? 'WS ●' : 'WS …'}
+                <span className="hidden sm:inline-flex items-center gap-1.5 text-xs text-slate-500">
+                  <span className={`h-1.5 w-1.5 rounded-full ${wsPayload ? 'bg-emerald-500' : 'bg-slate-600 animate-pulse'}`} />
+                  {wsPayload ? 'Connected' : 'Connecting…'}
                 </span>
                 <button
                   type="button"
                   onClick={signOut}
-                  className="rounded-md border border-slate-700 px-3 py-1.5 hover:bg-slate-800"
+                  className="rounded-lg border border-slate-700/60 bg-slate-800/40 px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-all"
                 >
                   Sign out
                 </button>
@@ -49,9 +51,9 @@ function Shell() {
               <button
                 type="button"
                 onClick={() => signIn().catch(console.error)}
-                className="rounded-md bg-emerald-600 px-3 py-1.5 font-medium hover:bg-emerald-500"
+                className="rounded-lg bg-emerald-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500 shadow-md shadow-emerald-900/20 transition-all"
               >
-                Sign message
+                Sign in
               </button>
             )}
           </div>
@@ -93,8 +95,9 @@ export default function App() {
         <div className="relative">
           <WalletTree />
         </div>
-        <footer className="text-center text-xs text-slate-600 pb-6">
-          Off-chain game logic · {SOLANA_NETWORK} · verifiable buy-ins & commitments
+        <footer className="text-center text-xs text-slate-700 pb-8 pt-4 space-y-1">
+          <p className="text-slate-600">Fantasy500 — fantasy sports for the stock market</p>
+          <p>Off-chain game logic · {SOLANA_NETWORK} · verifiable buy-ins & commitments</p>
         </footer>
       </div>
     </BrowserRouter>
