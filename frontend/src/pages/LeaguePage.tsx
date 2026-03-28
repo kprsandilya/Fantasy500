@@ -3,11 +3,13 @@ import { Link, useParams } from 'react-router-dom'
 import {
   getDraft,
   getLeague,
+  getTeams,
   joinLeague,
   startDraft,
   updateLeague,
   type DraftSession,
   type League,
+  type Team,
 } from '../api'
 import { useAuth } from '../AuthContext'
 
@@ -16,6 +18,7 @@ export function LeaguePage() {
   const { token } = useAuth()
   const [league, setLeague] = useState<League | null>(null)
   const [draft, setDraft] = useState<DraftSession | null>(null)
+  const [teams, setTeams] = useState<Team[]>([])
   const [teamName, setTeamName] = useState('My desk')
   const [msg, setMsg] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -26,6 +29,7 @@ export function LeaguePage() {
   const [editBuyIn, setEditBuyIn] = useState<number | ''>('')
   const [editRounds, setEditRounds] = useState(10)
   const [editRoster, setEditRoster] = useState(10)
+  const [editTimer, setEditTimer] = useState(0)
   const [saving, setSaving] = useState(false)
 
   const walletRef = useRef<string | null>(null)
@@ -46,12 +50,14 @@ export function LeaguePage() {
   async function refresh() {
     if (!id) return
     try {
-      const [l, d] = await Promise.all([
+      const [l, d, t] = await Promise.all([
         getLeague(id, token),
         getDraft(id).catch(() => null),
+        getTeams(id).catch(() => [] as Team[]),
       ])
       setLeague(l)
       setDraft(d)
+      setTeams(t)
     } catch {
       /* ok */
     } finally {
@@ -74,6 +80,7 @@ export function LeaguePage() {
     )
     setEditRounds(league.settings?.snake_rounds ?? 10)
     setEditRoster(league.settings?.roster_size ?? 10)
+    setEditTimer(league.settings?.draft_timer_seconds ?? 0)
     setEditing(true)
     setMsg(null)
   }
@@ -91,6 +98,7 @@ export function LeaguePage() {
           editBuyIn === '' ? undefined : Math.round(Number(editBuyIn) * 1_000_000_000),
         snake_rounds: editRounds,
         roster_size: editRoster,
+        draft_timer_seconds: editTimer,
       })
       setLeague(updated)
       setEditing(false)
@@ -116,6 +124,11 @@ export function LeaguePage() {
     !!walletRef.current &&
     !!league &&
     walletRef.current === league.commissioner_wallet
+
+  const myTeam = teams.find((t) => t.owner_wallet === walletRef.current) ?? null
+  const hasJoined = myTeam !== null
+  const joinedCount = teams.length
+  const maxTeams = league?.team_count ?? 0
 
   const statusColor: Record<string, string> = {
     forming: 'bg-blue-900/40 text-blue-400',
@@ -223,8 +236,8 @@ export function LeaguePage() {
                 onChange={(e) => setEditRoster(Number(e.target.value))}
               />
             </label>
-            <label className="space-y-1 text-sm sm:col-span-2">
-              <span className="text-slate-400">Buy-in (SOL, leave blank for free)</span>
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-400">Buy-in (SOL, blank = free)</span>
               <input
                 type="number"
                 step="0.01"
@@ -234,6 +247,17 @@ export function LeaguePage() {
                 onChange={(e) =>
                   setEditBuyIn(e.target.value === '' ? '' : Number(e.target.value))
                 }
+              />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-400">Pick timer (seconds, 0 = off)</span>
+              <input
+                type="number"
+                min={0}
+                max={600}
+                className="w-full rounded-md bg-slate-950 border border-slate-700 px-3 py-2 focus:border-emerald-600 focus:outline-none"
+                value={editTimer}
+                onChange={(e) => setEditTimer(Number(e.target.value))}
               />
             </label>
             <div className="sm:col-span-2 flex items-center gap-3">
@@ -258,10 +282,21 @@ export function LeaguePage() {
 
       {/* League info */}
       {league && (
-        <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {[
-            { label: 'Teams', value: league.team_count },
+            {
+              label: 'Players',
+              value: `${joinedCount}/${maxTeams}`,
+              accent: joinedCount === maxTeams,
+            },
             { label: 'Rounds', value: league.settings?.snake_rounds ?? 10 },
+            { label: 'Roster', value: league.settings?.roster_size ?? 10 },
+            {
+              label: 'Pick Timer',
+              value: league.settings?.draft_timer_seconds
+                ? `${league.settings.draft_timer_seconds}s`
+                : 'Off',
+            },
             { label: 'Season', value: league.season_year },
             {
               label: 'Buy-in',
@@ -277,52 +312,123 @@ export function LeaguePage() {
               <div className="text-[0.65rem] uppercase tracking-wider text-slate-500">
                 {stat.label}
               </div>
-              <div className="text-lg font-semibold text-white mt-0.5">{stat.value}</div>
+              <div
+                className={`text-lg font-semibold mt-0.5 ${
+                  'accent' in stat && stat.accent ? 'text-emerald-400' : 'text-white'
+                }`}
+              >
+                {stat.value}
+              </div>
             </div>
           ))}
+
+          {/* Joined team roster */}
+          {teams.length > 0 && (
+            <div className="col-span-2 sm:col-span-3 lg:col-span-6 rounded-lg border border-slate-800 bg-slate-900/40 px-4 py-3">
+              <div className="text-[0.65rem] uppercase tracking-wider text-slate-500 mb-2">
+                Roster
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {teams.map((t) => {
+                  const isMe = t.owner_wallet === walletRef.current
+                  return (
+                    <span
+                      key={t.draft_position}
+                      className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium ${
+                        isMe
+                          ? 'bg-emerald-900/40 border border-emerald-700/40 text-emerald-300'
+                          : 'bg-slate-800 border border-slate-700/40 text-slate-300'
+                      }`}
+                    >
+                      <span className="text-slate-500 tabular-nums">{t.draft_position}.</span>
+                      {t.name}
+                      {isMe && (
+                        <span className="text-[0.6rem] text-emerald-500 font-semibold">(You)</span>
+                      )}
+                    </span>
+                  )
+                })}
+                {Array.from({ length: maxTeams - joinedCount }, (_, i) => (
+                  <span
+                    key={`empty-${i}`}
+                    className="inline-flex items-center rounded-md px-2.5 py-1 text-xs text-slate-600 bg-slate-800/40 border border-dashed border-slate-700/30"
+                  >
+                    Open slot
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </section>
       )}
 
       {/* Join / Start draft actions */}
       {token && league?.status === 'forming' && (
         <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-5 space-y-4">
-          <h2 className="text-lg font-medium text-white">Join this league</h2>
-          <div className="flex flex-wrap gap-3 items-end">
-            <label className="text-sm space-y-1 flex-1 min-w-[12rem]">
-              <span className="text-slate-400">Team name</span>
-              <input
-                className="w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2 focus:border-emerald-600 focus:outline-none"
-                value={teamName}
-                onChange={(e) => setTeamName(e.target.value)}
-              />
-            </label>
-            <button
-              type="button"
-              className="rounded-md bg-emerald-600 px-4 py-2 font-medium hover:bg-emerald-500 transition-colors"
-              onClick={() =>
-                joinLeague(token, id, teamName)
-                  .then(() => {
-                    setMsg('Joined!')
-                    void refresh()
-                  })
-                  .catch((e) => setMsg(String(e)))
-              }
-            >
-              Join league
-            </button>
-          </div>
+          {hasJoined ? (
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-900/40">
+                <svg className="w-4.5 h-4.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-white">
+                  You&apos;re in as <span className="text-emerald-400">{myTeam?.name}</span>
+                </p>
+                <p className="text-xs text-slate-500">
+                  Draft position #{myTeam?.draft_position} &middot; Waiting for {maxTeams - joinedCount} more player{maxTeams - joinedCount !== 1 ? 's' : ''}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <>
+              <h2 className="text-lg font-medium text-white">Join this league</h2>
+              <div className="flex flex-wrap gap-3 items-end">
+                <label className="text-sm space-y-1 flex-1 min-w-[12rem]">
+                  <span className="text-slate-400">Team name</span>
+                  <input
+                    className="w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2 focus:border-emerald-600 focus:outline-none"
+                    value={teamName}
+                    onChange={(e) => setTeamName(e.target.value)}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="rounded-md bg-emerald-600 px-4 py-2 font-medium hover:bg-emerald-500 transition-colors"
+                  onClick={() =>
+                    joinLeague(token, id, teamName)
+                      .then(() => {
+                        setMsg('Joined!')
+                        void refresh()
+                      })
+                      .catch((e) => setMsg(String(e)))
+                  }
+                >
+                  Join league
+                </button>
+              </div>
+            </>
+          )}
           {isCommissioner && (
-            <button
-              type="button"
-              className="rounded-md bg-amber-600 px-4 py-2 text-sm font-medium hover:bg-amber-500 transition-colors"
-              onClick={() =>
-                startDraft(token, id)
-                  .then(() => void refresh())
-                  .catch((e) => setMsg(String(e)))
-              }
-            >
-              Start draft
-            </button>
+            <div className="space-y-2 pt-1 border-t border-slate-800">
+              <button
+                type="button"
+                className="rounded-md bg-amber-600 px-4 py-2 text-sm font-medium hover:bg-amber-500 transition-colors"
+                onClick={() =>
+                  startDraft(token, id)
+                    .then(() => void refresh())
+                    .catch((e) => setMsg(String(e)))
+                }
+              >
+                Start draft
+              </button>
+              {joinedCount < maxTeams && (
+                <p className="text-xs text-slate-500">
+                  {joinedCount}/{maxTeams} players joined &mdash; all slots must be filled first
+                </p>
+              )}
+            </div>
           )}
           {msg && <p className="text-sm text-amber-300">{msg}</p>}
         </section>

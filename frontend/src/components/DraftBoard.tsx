@@ -64,15 +64,13 @@ export function DraftBoard({ draft, teams, totalRounds }: Props) {
 
         {Array.from({ length: totalRounds }, (_, r) => {
           const round = r + 1
-          const isReverse = round % 2 === 0
-          const teamOrder = isReverse ? [...order].reverse() : order
 
           return (
             <div key={round} className="contents">
               <div className="draft-cell draft-cell-round flex items-center justify-center">
                 {round}
               </div>
-              {teamOrder.map((t) => {
+              {order.map((t) => {
                 const tid = oidString(t._id)!
                 const key = `${round}-${tid}`
                 const pick = pickMap.get(key)

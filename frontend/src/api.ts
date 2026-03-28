@@ -52,6 +52,7 @@ export type League = {
     snake_rounds: number
     waiver_period_hours: number
     scoring_week_anchor: string
+    draft_timer_seconds: number
   }
   team_count: number
   season_year: number
@@ -121,6 +122,7 @@ export type UpdateLeagueBody = {
   buy_in_lamports?: number
   snake_rounds?: number
   roster_size?: number
+  draft_timer_seconds?: number
 }
 
 export async function updateLeague(token: string, id: string, body: UpdateLeagueBody) {
@@ -167,6 +169,12 @@ export async function getTeams(leagueId: string) {
 
 export async function getUniverse() {
   return apiFetch<{ symbols: string[] }>('/api/universe')
+}
+
+export async function autoPick(id: string) {
+  return apiFetch<DraftSession>(`/api/leagues/${id}/draft/auto-pick`, {
+    method: 'POST',
+  })
 }
 
 export async function draftPick(

@@ -71,6 +71,7 @@ pub struct UpdateLeagueBody {
     pub buy_in_lamports: Option<u64>,
     pub snake_rounds: Option<u8>,
     pub roster_size: Option<u8>,
+    pub draft_timer_seconds: Option<u32>,
 }
 
 #[derive(Deserialize)]
@@ -102,6 +103,7 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/api/leagues/:id/start-draft", post(start_draft))
         .route("/api/leagues/:id/draft", get(get_draft))
         .route("/api/leagues/:id/draft/pick", post(draft_pick))
+        .route("/api/leagues/:id/draft/auto-pick", post(auto_pick))
         .route("/api/leagues/:id/waivers", post(submit_waiver))
         .route("/api/leagues/:id/scores", get(get_scores))
         .route("/api/chain/ix/init-league", get(chain_init_ix))
@@ -266,6 +268,9 @@ async fn update_league(
         }
         update_doc.insert("settings.roster_size", rs as i32);
     }
+    if let Some(dt) = body.draft_timer_seconds {
+        update_doc.insert("settings.draft_timer_seconds", dt as i32);
+    }
 
     if update_doc.is_empty() {
         return Ok(Json(league));
@@ -408,6 +413,11 @@ async fn start_draft(
     teams.sort_by_key(|t| t.draft_position);
     let order: Vec<ObjectId> = teams.iter().filter_map(|t| t.id).collect();
     let clock = order.first().cloned();
+    let deadline = if league.settings.draft_timer_seconds > 0 {
+        Some(chrono::Utc::now() + chrono::Duration::seconds(league.settings.draft_timer_seconds as i64))
+    } else {
+        None
+    };
     let session = DraftSession {
         id: None,
         league_id: league_oid,
@@ -416,7 +426,7 @@ async fn start_draft(
         clock_team_id: clock,
         direction: DraftDirection::Forward,
         picks: vec![],
-        deadline_at: None,
+        deadline_at: deadline,
     };
     let draft = state.db.collection::<DraftSession>("draft_sessions");
     draft
@@ -545,6 +555,7 @@ async fn draft_pick(
     if done {
         session.status = DraftStatus::Completed;
         session.clock_team_id = None;
+        session.deadline_at = None;
         leagues
             .update_one(
                 mongodb::bson::doc! { "_id": league_oid },
@@ -592,6 +603,11 @@ async fn draft_pick(
         let n = order.len();
         session.current_round = (next_idx / n as u32 + 1) as u8;
         session.direction = direction_for_round_from_pick(next_idx, n);
+        session.deadline_at = if league.settings.draft_timer_seconds > 0 {
+            Some(chrono::Utc::now() + chrono::Duration::seconds(league.settings.draft_timer_seconds as i64))
+        } else {
+            None
+        };
     }
     let filter = if let Some(sid) = session.id {
         mongodb::bson::doc! { "_id": sid }
@@ -609,6 +625,137 @@ async fn draft_pick(
         session: session.clone(),
     });
     let _ = chain_tx::record_pick_instruction(&state.config, session.picks.len() as u32 - 1, hash32);
+    Ok(Json(session))
+}
+
+async fn auto_pick(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> AppResult<Json<DraftSession>> {
+    let league_oid = ObjectId::parse_str(&id).map_err(|_| AppError::BadRequest("bad id".into()))?;
+    let leagues = state.db.collection::<League>("leagues");
+    let league = leagues
+        .find_one(mongodb::bson::doc! { "_id": league_oid })
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+        .ok_or(AppError::NotFound)?;
+
+    let draft_col = state.db.collection::<DraftSession>("draft_sessions");
+    let session = draft_col
+        .find_one(mongodb::bson::doc! { "league_id": league_oid })
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+        .ok_or(AppError::NotFound)?;
+
+    if session.status != DraftStatus::InProgress {
+        return Err(AppError::Conflict("draft not active".into()));
+    }
+
+    match session.deadline_at {
+        Some(deadline) if deadline <= chrono::Utc::now() => {}
+        _ => return Err(AppError::Conflict("timer has not expired".into())),
+    }
+
+    let teams_col = state.db.collection::<Team>("teams");
+    let mut cur = teams_col
+        .find(mongodb::bson::doc! { "league_id": league_oid })
+        .sort(mongodb::bson::doc! { "draft_position": 1 })
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let mut teams: Vec<Team> = Vec::new();
+    while let Some(t) = cur
+        .try_next()
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+    {
+        teams.push(t);
+    }
+    teams.sort_by_key(|t| t.draft_position);
+    let order: Vec<ObjectId> = teams.iter().filter_map(|t| t.id).collect();
+
+    let on_clock = next_clock_team(&session, &order, league.settings.snake_rounds)
+        .ok_or_else(|| AppError::Conflict("draft complete".into()))?;
+    let clock_wallet = teams
+        .iter()
+        .find(|t| t.id == Some(on_clock))
+        .map(|t| t.owner_wallet.clone())
+        .unwrap_or_default();
+
+    let drafted: std::collections::HashSet<String> =
+        session.picks.iter().map(|p| p.symbol.clone()).collect();
+    let universe = fortune500::universe();
+    let available: Vec<&String> = universe.iter().filter(|s| !drafted.contains(*s)).collect();
+    if available.is_empty() {
+        return Err(AppError::Conflict("no symbols left".into()));
+    }
+    use rand::seq::SliceRandom;
+    let sym = available
+        .choose(&mut rand::thread_rng())
+        .ok_or_else(|| AppError::Internal("rng".into()))?
+        .to_string();
+    let company_name = sym.clone();
+
+    let overall = session.picks.len() as u16 + 1;
+    let round = ((overall - 1) / order.len() as u16 + 1) as u8;
+    let hash = pick_commit::draft_pick_hash(
+        &league_oid.to_hex(),
+        round,
+        overall,
+        &sym,
+        &clock_wallet,
+    );
+
+    let pick = DraftPick {
+        round,
+        overall,
+        team_id: on_clock,
+        symbol: sym,
+        company_name,
+        chain_commitment: Some(hash),
+    };
+
+    let mut session = session;
+    session.picks.push(pick);
+
+    let done = session.picks.len() as u32
+        >= league.settings.snake_rounds as u32 * order.len() as u32;
+    if done {
+        session.status = DraftStatus::Completed;
+        session.clock_team_id = None;
+        session.deadline_at = None;
+        leagues
+            .update_one(
+                mongodb::bson::doc! { "_id": league_oid },
+                mongodb::bson::doc! { "$set": { "status": "active" } },
+            )
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+    } else {
+        session.clock_team_id = next_clock_team(&session, &order, league.settings.snake_rounds);
+        let next_idx = session.picks.len() as u32;
+        let n = order.len();
+        session.current_round = (next_idx / n as u32 + 1) as u8;
+        session.direction = direction_for_round_from_pick(next_idx, n);
+        session.deadline_at = if league.settings.draft_timer_seconds > 0 {
+            Some(chrono::Utc::now() + chrono::Duration::seconds(league.settings.draft_timer_seconds as i64))
+        } else {
+            None
+        };
+    }
+
+    let filter = if let Some(sid) = session.id {
+        mongodb::bson::doc! { "_id": sid }
+    } else {
+        mongodb::bson::doc! { "league_id": league_oid }
+    };
+    draft_col
+        .replace_one(filter, &session)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    state.broadcast_json(&WsServerMessage::DraftUpdated {
+        session: session.clone(),
+    });
     Ok(Json(session))
 }
 

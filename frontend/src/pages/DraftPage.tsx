@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import {
+  autoPick,
   draftPick,
   getDraft,
   getLeague,
@@ -104,6 +105,21 @@ export function DraftPage() {
   }, [draft, myTeam])
 
   const totalRounds = league?.settings?.snake_rounds ?? 10
+  const timerDuration = league?.settings?.draft_timer_seconds ?? 0
+  const autoPickingRef = useRef(false)
+
+  const handleTimerExpired = useCallback(async () => {
+    if (!id || autoPickingRef.current) return
+    autoPickingRef.current = true
+    try {
+      const updated = await autoPick(id)
+      setDraft(updated)
+    } catch {
+      void fetchAll()
+    } finally {
+      autoPickingRef.current = false
+    }
+  }, [id, fetchAll])
 
   async function handlePick(symbol: string, company: string) {
     if (!token || !id) return
@@ -171,7 +187,13 @@ export function DraftPage() {
       </div>
 
       {/* On the clock banner */}
-      <OnTheClock draft={draft} teams={teams} isMyTurn={isMyTurn} />
+      <OnTheClock
+        draft={draft}
+        teams={teams}
+        isMyTurn={isMyTurn}
+        timerDuration={timerDuration}
+        onTimerExpired={handleTimerExpired}
+      />
 
       {error && (
         <div className="rounded-md bg-red-900/30 border border-red-700/40 px-3 py-2 text-sm text-red-400">

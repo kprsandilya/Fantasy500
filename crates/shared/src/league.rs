@@ -16,6 +16,9 @@ pub struct LeagueSettings {
     pub waiver_period_hours: u32,
     /// ISO weekday name for weekly scoring boundaries (e.g. `"Mon"`).
     pub scoring_week_anchor: String,
+    /// Seconds each team has per pick. 0 = no timer.
+    #[serde(default)]
+    pub draft_timer_seconds: u32,
 }
 
 impl Default for LeagueSettings {
@@ -25,6 +28,7 @@ impl Default for LeagueSettings {
             snake_rounds: 10,
             waiver_period_hours: 48,
             scoring_week_anchor: "Mon".to_string(),
+            draft_timer_seconds: 0,
         }
     }
 }
