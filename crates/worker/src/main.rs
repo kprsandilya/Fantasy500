@@ -8,7 +8,8 @@ use futures::TryStreamExt;
 use mongodb::Client;
 use serde::Deserialize;
 use shared::{
-    League, PlayerWeeklyScore, PriceBar, RosterSlot, Team, TeamWeekTotal, WeeklyScoreboard,
+    load_dotenv, League, PlayerWeeklyScore, PriceBar, RosterSlot, Team, TeamWeekTotal,
+    WeeklyScoreboard,
 };
 
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -63,6 +64,7 @@ async fn yahoo_price(symbol: &str) -> anyhow::Result<f64> {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    load_dotenv();
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
         .with(tracing_subscriber::fmt::layer())

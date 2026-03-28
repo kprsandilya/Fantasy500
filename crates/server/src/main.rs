@@ -1,4 +1,5 @@
 use mongodb::Client;
+use shared::load_dotenv;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::config::Config;
@@ -21,6 +22,7 @@ mod state;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    load_dotenv();
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
         .with(tracing_subscriber::fmt::layer())

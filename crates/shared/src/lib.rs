@@ -1,5 +1,6 @@
 //! Shared domain types for API, worker, and clients.
 
+pub mod dotenv;
 pub mod auth;
 pub mod draft;
 pub mod league;
@@ -10,6 +11,7 @@ pub mod user;
 pub mod waiver;
 pub mod ws;
 
+pub use dotenv::load_dotenv;
 pub use auth::{AuthClaims, WalletAuthPayload};
 pub use draft::{DraftDirection, DraftPick, DraftSession, DraftStatus};
 pub use league::{League, LeagueSettings, LeagueStatus};
