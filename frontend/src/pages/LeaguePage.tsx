@@ -1,13 +1,18 @@
 import { type FormEvent, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import {
+  approveJoinRequest,
   getDraft,
   getLeague,
   getTeams,
   joinLeague,
+  listJoinRequests,
+  oidString,
+  rejectJoinRequest,
   startDraft,
   updateLeague,
   type DraftSession,
+  type JoinRequest,
   type League,
   type Team,
 } from '../api'
@@ -19,6 +24,7 @@ export function LeaguePage() {
   const [league, setLeague] = useState<League | null>(null)
   const [draft, setDraft] = useState<DraftSession | null>(null)
   const [teams, setTeams] = useState<Team[]>([])
+  const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([])
   const [teamName, setTeamName] = useState('My desk')
   const [msg, setMsg] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -50,14 +56,16 @@ export function LeaguePage() {
   async function refresh() {
     if (!id) return
     try {
-      const [l, d, t] = await Promise.all([
+      const [l, d, t, jr] = await Promise.all([
         getLeague(id, token),
         getDraft(id).catch(() => null),
         getTeams(id).catch(() => [] as Team[]),
+        listJoinRequests(id, token).catch(() => [] as JoinRequest[]),
       ])
       setLeague(l)
       setDraft(d)
       setTeams(t)
+      setJoinRequests(jr)
     } catch {
       /* ok */
     } finally {
@@ -363,74 +371,200 @@ export function LeaguePage() {
       )}
 
       {/* Join / Start draft actions */}
-      {token && league?.status === 'forming' && (
-        <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-5 space-y-4">
-          {hasJoined ? (
-            <div className="flex items-center gap-3">
-              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-900/40">
-                <svg className="w-4.5 h-4.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
+      {token && league?.status === 'forming' && (() => {
+        const myRequest = joinRequests.find((r) => r.wallet === walletRef.current)
+        return (
+          <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-5 space-y-4">
+            {hasJoined ? (
+              <div className="flex items-center gap-3">
+                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-900/40">
+                  <svg className="w-4.5 h-4.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-white">
+                    You&apos;re in as <span className="text-emerald-400">{myTeam?.name}</span>
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Draft position #{myTeam?.draft_position} &middot; Waiting for {maxTeams - joinedCount} more player{maxTeams - joinedCount !== 1 ? 's' : ''}
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="text-sm font-medium text-white">
-                  You&apos;re in as <span className="text-emerald-400">{myTeam?.name}</span>
-                </p>
-                <p className="text-xs text-slate-500">
-                  Draft position #{myTeam?.draft_position} &middot; Waiting for {maxTeams - joinedCount} more player{maxTeams - joinedCount !== 1 ? 's' : ''}
-                </p>
+            ) : myRequest?.status === 'pending' ? (
+              <div className="flex items-center gap-3">
+                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-amber-900/40">
+                  <svg className="w-4.5 h-4.5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-white">
+                    Request pending for <span className="text-amber-400">{myRequest.team_name}</span>
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Waiting for commissioner approval
+                  </p>
+                </div>
               </div>
-            </div>
-          ) : (
-            <>
-              <h2 className="text-lg font-medium text-white">Join this league</h2>
-              <div className="flex flex-wrap gap-3 items-end">
-                <label className="text-sm space-y-1 flex-1 min-w-[12rem]">
-                  <span className="text-slate-400">Team name</span>
-                  <input
-                    className="w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2 focus:border-emerald-600 focus:outline-none"
-                    value={teamName}
-                    onChange={(e) => setTeamName(e.target.value)}
-                  />
-                </label>
+            ) : myRequest?.status === 'rejected' ? (
+              <div className="flex items-center gap-3">
+                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-red-900/40">
+                  <svg className="w-4.5 h-4.5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-white">
+                    Your request was <span className="text-red-400">declined</span>
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    You can submit a new request with a different team name
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-3 items-end ml-auto">
+                  <label className="text-sm space-y-1 flex-1 min-w-[12rem]">
+                    <span className="text-slate-400">Team name</span>
+                    <input
+                      className="w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2 focus:border-emerald-600 focus:outline-none"
+                      value={teamName}
+                      onChange={(e) => setTeamName(e.target.value)}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="rounded-md bg-emerald-600 px-4 py-2 font-medium hover:bg-emerald-500 transition-colors"
+                    onClick={() =>
+                      joinLeague(token, id, teamName)
+                        .then(() => {
+                          setMsg('Request sent! Waiting for approval.')
+                          void refresh()
+                        })
+                        .catch((e) => setMsg(String(e)))
+                    }
+                  >
+                    Re-request
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <h2 className="text-lg font-medium text-white">Join this league</h2>
+                <div className="flex flex-wrap gap-3 items-end">
+                  <label className="text-sm space-y-1 flex-1 min-w-[12rem]">
+                    <span className="text-slate-400">Team name</span>
+                    <input
+                      className="w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2 focus:border-emerald-600 focus:outline-none"
+                      value={teamName}
+                      onChange={(e) => setTeamName(e.target.value)}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="rounded-md bg-emerald-600 px-4 py-2 font-medium hover:bg-emerald-500 transition-colors"
+                    onClick={() =>
+                      joinLeague(token, id, teamName)
+                        .then(() => {
+                          setMsg('Request sent! Waiting for commissioner approval.')
+                          void refresh()
+                        })
+                        .catch((e) => setMsg(String(e)))
+                    }
+                  >
+                    Request to join
+                  </button>
+                </div>
+              </>
+            )}
+            {isCommissioner && (
+              <div className="space-y-2 pt-1 border-t border-slate-800">
                 <button
                   type="button"
-                  className="rounded-md bg-emerald-600 px-4 py-2 font-medium hover:bg-emerald-500 transition-colors"
+                  className="rounded-md bg-amber-600 px-4 py-2 text-sm font-medium hover:bg-amber-500 transition-colors"
                   onClick={() =>
-                    joinLeague(token, id, teamName)
-                      .then(() => {
-                        setMsg('Joined!')
-                        void refresh()
-                      })
+                    startDraft(token, id)
+                      .then(() => void refresh())
                       .catch((e) => setMsg(String(e)))
                   }
                 >
-                  Join league
+                  Start draft
                 </button>
+                {joinedCount < maxTeams && (
+                  <p className="text-xs text-slate-500">
+                    {joinedCount}/{maxTeams} players joined &mdash; all slots must be filled first
+                  </p>
+                )}
               </div>
-            </>
-          )}
-          {isCommissioner && (
-            <div className="space-y-2 pt-1 border-t border-slate-800">
-              <button
-                type="button"
-                className="rounded-md bg-amber-600 px-4 py-2 text-sm font-medium hover:bg-amber-500 transition-colors"
-                onClick={() =>
-                  startDraft(token, id)
-                    .then(() => void refresh())
-                    .catch((e) => setMsg(String(e)))
-                }
-              >
-                Start draft
-              </button>
-              {joinedCount < maxTeams && (
-                <p className="text-xs text-slate-500">
-                  {joinedCount}/{maxTeams} players joined &mdash; all slots must be filled first
-                </p>
+            )}
+            {msg && <p className="text-sm text-amber-300">{msg}</p>}
+          </section>
+        )
+      })()}
+
+      {/* Commissioner join-request approval panel */}
+      {isCommissioner && league?.status === 'forming' && joinRequests.length > 0 && (
+        <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-medium text-white flex items-center gap-2">
+              Join Requests
+              {joinRequests.filter((r) => r.status === 'pending').length > 0 && (
+                <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full bg-amber-600 text-xs font-bold text-white">
+                  {joinRequests.filter((r) => r.status === 'pending').length}
+                </span>
               )}
-            </div>
-          )}
-          {msg && <p className="text-sm text-amber-300">{msg}</p>}
+            </h2>
+          </div>
+          <div className="divide-y divide-slate-800">
+            {joinRequests.map((req) => {
+              const rid = oidString(req._id)!
+              const isPending = req.status === 'pending'
+              return (
+                <div key={rid} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-white truncate">{req.team_name}</p>
+                    <p className="text-xs text-slate-500 font-mono truncate">{req.wallet}</p>
+                  </div>
+                  {isPending ? (
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-500 transition-colors"
+                        onClick={() =>
+                          approveJoinRequest(token!, id!, rid)
+                            .then(() => void refresh())
+                            .catch((e) => setMsg(String(e)))
+                        }
+                      >
+                        Approve
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-md border border-red-800 bg-red-950/40 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-900/40 transition-colors"
+                        onClick={() =>
+                          rejectJoinRequest(token!, id!, rid)
+                            .then(() => void refresh())
+                            .catch((e) => setMsg(String(e)))
+                        }
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  ) : (
+                    <span
+                      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold shrink-0 ${
+                        req.status === 'approved'
+                          ? 'bg-emerald-900/40 text-emerald-400'
+                          : 'bg-red-900/40 text-red-400'
+                      }`}
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                      {req.status}
+                    </span>
+                  )}
+                </div>
+              )
+            })}
+          </div>
         </section>
       )}
 

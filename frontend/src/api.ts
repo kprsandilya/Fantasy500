@@ -144,11 +144,39 @@ export async function createLeague(
   })
 }
 
+export type JoinRequest = {
+  _id?: string | { $oid: string }
+  league_id: string | { $oid: string }
+  wallet: string
+  team_name: string
+  status: 'pending' | 'approved' | 'rejected'
+  created_at: number
+  resolved_at?: number | null
+}
+
 export async function joinLeague(token: string, id: string, team_name: string) {
-  return apiFetch<Team>(`/api/leagues/${id}/join`, {
+  return apiFetch<JoinRequest>(`/api/leagues/${id}/join`, {
     method: 'POST',
     token,
     body: JSON.stringify({ team_name }),
+  })
+}
+
+export async function listJoinRequests(leagueId: string, token?: string | null) {
+  return apiFetch<JoinRequest[]>(`/api/leagues/${leagueId}/join-requests`, { token })
+}
+
+export async function approveJoinRequest(token: string, leagueId: string, requestId: string) {
+  return apiFetch<JoinRequest>(`/api/leagues/${leagueId}/join-requests/${requestId}/approve`, {
+    method: 'POST',
+    token,
+  })
+}
+
+export async function rejectJoinRequest(token: string, leagueId: string, requestId: string) {
+  return apiFetch<JoinRequest>(`/api/leagues/${leagueId}/join-requests/${requestId}/reject`, {
+    method: 'POST',
+    token,
   })
 }
 

@@ -15,9 +15,9 @@ use serde_json::json;
 use tower_http::cors::{Any, CorsLayer};
 
 use shared::{
-    DraftDirection, DraftPick, DraftSession, DraftStatus, League, LeagueSettings, LeagueStatus,
-    RosterEntry, RosterSlot, Team, User, WalletAuthPayload, WaiverClaim, WeeklyScoreboard,
-    WsServerMessage,
+    DraftDirection, DraftPick, DraftSession, DraftStatus, JoinRequest, JoinRequestStatus,
+    League, LeagueSettings, LeagueStatus, RosterEntry, RosterSlot, Team, User,
+    WalletAuthPayload, WaiverClaim, WeeklyScoreboard, WsServerMessage,
 };
 
 use crate::auth_wallet;
@@ -100,6 +100,9 @@ pub fn router() -> Router<Arc<AppState>> {
         )
         .route("/api/leagues/:id/teams", get(get_teams))
         .route("/api/leagues/:id/join", post(join_league))
+        .route("/api/leagues/:id/join-requests", get(list_join_requests))
+        .route("/api/leagues/:id/join-requests/:rid/approve", post(approve_join))
+        .route("/api/leagues/:id/join-requests/:rid/reject", post(reject_join))
         .route("/api/leagues/:id/start-draft", post(start_draft))
         .route("/api/leagues/:id/draft", get(get_draft))
         .route("/api/leagues/:id/draft/pick", post(draft_pick))
@@ -337,7 +340,7 @@ async fn join_league(
     AuthWallet(wallet): AuthWallet,
     Path(id): Path<String>,
     Json(body): Json<JoinLeagueBody>,
-) -> AppResult<Json<Team>> {
+) -> AppResult<Json<JoinRequest>> {
     let league_oid = ObjectId::parse_str(&id).map_err(|_| AppError::BadRequest("bad id".into()))?;
     let leagues = state.db.collection::<League>("leagues");
     let league = leagues
@@ -348,30 +351,203 @@ async fn join_league(
     if league.status != LeagueStatus::Forming {
         return Err(AppError::Conflict("league not accepting joins".into()));
     }
+
+    let jr_col = state.db.collection::<JoinRequest>("join_requests");
+    let existing = jr_col
+        .find_one(mongodb::bson::doc! {
+            "league_id": league_oid,
+            "wallet": &wallet,
+            "status": "pending",
+        })
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    if existing.is_some() {
+        return Err(AppError::Conflict("you already have a pending request".into()));
+    }
+
     let teams = state.db.collection::<Team>("teams");
-    let count = teams
+    let already_joined = teams
+        .find_one(mongodb::bson::doc! { "league_id": league_oid, "owner_wallet": &wallet })
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    if already_joined.is_some() {
+        return Err(AppError::Conflict("you already joined this league".into()));
+    }
+
+    let is_commissioner = wallet == league.commissioner_wallet;
+    let status = if is_commissioner {
+        JoinRequestStatus::Approved
+    } else {
+        JoinRequestStatus::Pending
+    };
+    let now = chrono::Utc::now();
+    let mut req = JoinRequest {
+        id: None,
+        league_id: league_oid,
+        wallet: wallet.clone(),
+        team_name: body.team_name.clone(),
+        status,
+        created_at: now,
+        resolved_at: if is_commissioner { Some(now) } else { None },
+    };
+    let res = jr_col
+        .insert_one(&req)
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    req.id = res.inserted_id.as_object_id();
+
+    if is_commissioner {
+        let teams_col = state.db.collection::<Team>("teams");
+        let count = teams_col
+            .count_documents(mongodb::bson::doc! { "league_id": league_oid })
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+        let team = Team {
+            id: None,
+            league_id: league_oid,
+            owner_wallet: wallet,
+            name: body.team_name,
+            draft_position: (count as u8) + 1,
+            roster: vec![],
+            chain_team: None,
+        };
+        teams_col
+            .insert_one(&team)
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+    }
+
+    Ok(Json(req))
+}
+
+async fn list_join_requests(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> AppResult<Json<Vec<JoinRequest>>> {
+    let league_oid = ObjectId::parse_str(&id).map_err(|_| AppError::BadRequest("bad id".into()))?;
+    let col = state.db.collection::<JoinRequest>("join_requests");
+    let mut cur = col
+        .find(mongodb::bson::doc! { "league_id": league_oid })
+        .sort(mongodb::bson::doc! { "created_at": 1 })
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let mut out = Vec::new();
+    while let Some(r) = cur
+        .try_next()
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+    {
+        out.push(r);
+    }
+    Ok(Json(out))
+}
+
+async fn approve_join(
+    State(state): State<Arc<AppState>>,
+    AuthWallet(wallet): AuthWallet,
+    Path((id, rid)): Path<(String, String)>,
+) -> AppResult<Json<JoinRequest>> {
+    let league_oid = ObjectId::parse_str(&id).map_err(|_| AppError::BadRequest("bad league id".into()))?;
+    let req_oid = ObjectId::parse_str(&rid).map_err(|_| AppError::BadRequest("bad request id".into()))?;
+
+    let leagues = state.db.collection::<League>("leagues");
+    let league = leagues
+        .find_one(mongodb::bson::doc! { "_id": league_oid })
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+        .ok_or(AppError::NotFound)?;
+    require_commissioner(&wallet, &league.commissioner_wallet)?;
+
+    let jr_col = state.db.collection::<JoinRequest>("join_requests");
+    let req = jr_col
+        .find_one(mongodb::bson::doc! { "_id": req_oid, "league_id": league_oid })
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+        .ok_or(AppError::NotFound)?;
+
+    if req.status != JoinRequestStatus::Pending {
+        return Err(AppError::Conflict("request already resolved".into()));
+    }
+
+    let teams_col = state.db.collection::<Team>("teams");
+    let count = teams_col
         .count_documents(mongodb::bson::doc! { "league_id": league_oid })
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
     if count >= league.team_count as u64 {
         return Err(AppError::Conflict("league full".into()));
     }
+
     let draft_pos = (count as u8) + 1;
-    let mut team = Team {
+    let team = Team {
         id: None,
         league_id: league_oid,
-        owner_wallet: wallet,
-        name: body.team_name,
+        owner_wallet: req.wallet.clone(),
+        name: req.team_name.clone(),
         draft_position: draft_pos,
         roster: vec![],
         chain_team: None,
     };
-    let res = teams
+    teams_col
         .insert_one(&team)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
-    team.id = res.inserted_id.as_object_id();
-    Ok(Json(team))
+
+    let now = chrono::Utc::now();
+    jr_col
+        .update_one(
+            mongodb::bson::doc! { "_id": req_oid },
+            mongodb::bson::doc! { "$set": { "status": "approved", "resolved_at": bson::DateTime::from_chrono(now) } },
+        )
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    let mut updated = req;
+    updated.status = JoinRequestStatus::Approved;
+    updated.resolved_at = Some(now);
+    Ok(Json(updated))
+}
+
+async fn reject_join(
+    State(state): State<Arc<AppState>>,
+    AuthWallet(wallet): AuthWallet,
+    Path((id, rid)): Path<(String, String)>,
+) -> AppResult<Json<JoinRequest>> {
+    let league_oid = ObjectId::parse_str(&id).map_err(|_| AppError::BadRequest("bad league id".into()))?;
+    let req_oid = ObjectId::parse_str(&rid).map_err(|_| AppError::BadRequest("bad request id".into()))?;
+
+    let leagues = state.db.collection::<League>("leagues");
+    let league = leagues
+        .find_one(mongodb::bson::doc! { "_id": league_oid })
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+        .ok_or(AppError::NotFound)?;
+    require_commissioner(&wallet, &league.commissioner_wallet)?;
+
+    let jr_col = state.db.collection::<JoinRequest>("join_requests");
+    let req = jr_col
+        .find_one(mongodb::bson::doc! { "_id": req_oid, "league_id": league_oid })
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+        .ok_or(AppError::NotFound)?;
+
+    if req.status != JoinRequestStatus::Pending {
+        return Err(AppError::Conflict("request already resolved".into()));
+    }
+
+    let now = chrono::Utc::now();
+    jr_col
+        .update_one(
+            mongodb::bson::doc! { "_id": req_oid },
+            mongodb::bson::doc! { "$set": { "status": "rejected", "resolved_at": bson::DateTime::from_chrono(now) } },
+        )
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    let mut updated = req;
+    updated.status = JoinRequestStatus::Rejected;
+    updated.resolved_at = Some(now);
+    Ok(Json(updated))
 }
 
 async fn start_draft(
