@@ -2912,6 +2912,7 @@ dependencies = [
  "jsonwebtoken",
  "mongodb",
  "rand 0.8.5",
+ "reqwest",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -2924,6 +2925,7 @@ dependencies = [
  "tower-http 0.5.2",
  "tracing",
  "tracing-subscriber",
+ "urlencoding",
  "uuid",
 ]
 

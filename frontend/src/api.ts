@@ -180,6 +180,18 @@ export async function rejectJoinRequest(token: string, leagueId: string, request
   })
 }
 
+export type QuoteItem = {
+  symbol: string
+  price: number
+  change: number
+  change_percent: number
+  market_state?: string
+}
+
+export async function getQuotes() {
+  return apiFetch<QuoteItem[]>('/api/quotes')
+}
+
 export async function startDraft(token: string, id: string) {
   return apiFetch<DraftSession>(`/api/leagues/${id}/start-draft`, {
     method: 'POST',
@@ -240,4 +252,35 @@ export async function draftPick(
     token,
     body: JSON.stringify({ symbol, company_name }),
   })
+}
+
+export type TeamWeekTotal = {
+  team_id: string | { $oid: string }
+  owner_wallet: string
+  points: number
+}
+
+export type WeeklyScoreboard = {
+  league_id: string | { $oid: string }
+  week_start: string
+  team_totals: TeamWeekTotal[]
+}
+
+export type PlayerWeeklyScore = {
+  wallet: string
+  team_id: string | { $oid: string }
+  symbol: string
+  week_start: string
+  pct_change: number
+  points: number
+}
+
+export type ScoresResponse = {
+  weeks: WeeklyScoreboard[]
+  player_scores: PlayerWeeklyScore[]
+  current_week_start: string
+}
+
+export async function getScores(leagueId: string) {
+  return apiFetch<ScoresResponse>(`/api/leagues/${leagueId}/scores`)
 }

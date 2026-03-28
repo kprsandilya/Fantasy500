@@ -16,8 +16,8 @@ use tower_http::cors::{Any, CorsLayer};
 
 use shared::{
     DraftDirection, DraftPick, DraftSession, DraftStatus, JoinRequest, JoinRequestStatus,
-    League, LeagueSettings, LeagueStatus, RosterEntry, RosterSlot, Team, User,
-    WalletAuthPayload, WaiverClaim, WeeklyScoreboard, WsServerMessage,
+    League, LeagueSettings, LeagueStatus, PlayerWeeklyScore, RosterEntry, RosterSlot, Team,
+    User, WalletAuthPayload, WaiverClaim, WeeklyScoreboard, WsServerMessage,
 };
 
 use rand::seq::SliceRandom;
@@ -30,6 +30,7 @@ use crate::extract::{require_commissioner, AuthWallet};
 use crate::fortune500;
 use crate::jwt;
 use crate::pick_commit;
+use crate::quotes;
 use crate::state::AppState;
 
 #[derive(Deserialize)]
@@ -95,6 +96,7 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/api/auth/verify", post(verify))
         .route("/api/me", get(me))
         .route("/api/universe", get(universe))
+        .route("/api/quotes", get(live_quotes))
         .route("/api/leagues", get(list_leagues).post(create_league))
         .route(
             "/api/leagues/:id",
@@ -167,6 +169,13 @@ async fn me(AuthWallet(wallet): AuthWallet) -> AppResult<Json<serde_json::Value>
 async fn universe() -> AppResult<Json<serde_json::Value>> {
     let list: Vec<&str> = fortune500::universe().iter().map(|s| s.as_str()).collect();
     Ok(Json(json!({ "symbols": list })))
+}
+
+async fn live_quotes(
+    State(state): State<Arc<AppState>>,
+) -> AppResult<Json<Vec<quotes::QuoteItem>>> {
+    let items = quotes::get_quotes(&state).await;
+    Ok(Json(items))
 }
 
 async fn list_leagues(State(state): State<Arc<AppState>>) -> AppResult<Json<Vec<League>>> {
@@ -1074,18 +1083,64 @@ async fn get_scores(
     Path(id): Path<String>,
 ) -> AppResult<Json<serde_json::Value>> {
     let league_oid = ObjectId::parse_str(&id).map_err(|_| AppError::BadRequest("bad id".into()))?;
+
     let col = state.db.collection::<WeeklyScoreboard>("weekly_scores");
     let mut cur = col
         .find(mongodb::bson::doc! { "league_id": league_oid })
-        .sort(mongodb::bson::doc! { "week_start": -1 })
-        .limit(1)
+        .sort(mongodb::bson::doc! { "week_start": 1 })
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
-    let board = cur
+    let mut weeks: Vec<WeeklyScoreboard> = Vec::new();
+    while let Some(board) = cur
         .try_next()
         .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+    {
+        weeks.push(board);
+    }
+
+    let teams_col = state.db.collection::<Team>("teams");
+    let mut tcur = teams_col
+        .find(mongodb::bson::doc! { "league_id": league_oid })
+        .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
-    Ok(Json(json!({ "latest": board })))
+    let mut team_ids: Vec<bson::oid::ObjectId> = Vec::new();
+    while let Some(t) = tcur
+        .try_next()
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+    {
+        if let Some(tid) = t.id {
+            team_ids.push(tid);
+        }
+    }
+
+    let ps_col = state.db.collection::<PlayerWeeklyScore>("player_scores");
+    let mut pcur = ps_col
+        .find(mongodb::bson::doc! { "team_id": { "$in": &team_ids } })
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let mut player_scores: Vec<PlayerWeeklyScore> = Vec::new();
+    while let Some(ps) = pcur
+        .try_next()
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+    {
+        player_scores.push(ps);
+    }
+
+    let today = chrono::Utc::now().date_naive();
+    let iso = today.iso_week();
+    let monday =
+        chrono::NaiveDate::from_isoywd_opt(iso.year(), iso.week(), chrono::Weekday::Mon)
+            .unwrap_or(today);
+    let current_week_start = monday.format("%Y-%m-%d").to_string();
+
+    Ok(Json(json!({
+        "weeks": weeks,
+        "player_scores": player_scores,
+        "current_week_start": current_week_start,
+    })))
 }
 
 async fn chain_init_ix(

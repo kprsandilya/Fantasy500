@@ -3,12 +3,14 @@ import { Link, useParams, useSearchParams } from 'react-router-dom'
 import {
   getDraft,
   getLeague,
+  getScores,
   getTeams,
   listJoinRequests,
   oidString,
   type DraftSession,
   type JoinRequest,
   type League,
+  type ScoresResponse,
   type Team,
 } from '../api'
 import { useAuth } from '../AuthContext'
@@ -33,6 +35,7 @@ export function LeaguePage() {
   const [draft, setDraft] = useState<DraftSession | null>(null)
   const [teams, setTeams] = useState<Team[]>([])
   const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([])
+  const [scores, setScores] = useState<ScoresResponse | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -60,16 +63,18 @@ export function LeaguePage() {
   const refresh = useCallback(async () => {
     if (!id) return
     try {
-      const [l, d, t, jr] = await Promise.all([
+      const [l, d, t, jr, sc] = await Promise.all([
         getLeague(id, token),
         getDraft(id).catch(() => null),
         getTeams(id).catch(() => [] as Team[]),
         listJoinRequests(id, token).catch(() => [] as JoinRequest[]),
+        getScores(id).catch(() => null as ScoresResponse | null),
       ])
       setLeague(l)
       setDraft(d)
       setTeams(t)
       setJoinRequests(jr)
+      setScores(sc)
     } catch {
       /* ok */
     } finally {
@@ -177,7 +182,7 @@ export function LeaguePage() {
 
       {/* Tab content */}
       {activeTab === 'league' && (
-        <LeagueTab league={league} teams={teams} myTeam={myTeam} walletRef={walletRef} />
+        <LeagueTab league={league} teams={teams} myTeam={myTeam} walletRef={walletRef} scores={scores} />
       )}
       {activeTab === 'roster' && (
         <RosterTab id={id} token={token} teams={teams} myTeam={myTeam} walletRef={walletRef} league={league} patchTeam={patchTeam} />
@@ -201,7 +206,7 @@ export function LeaguePage() {
         />
       )}
       {activeTab === 'matchup' && (
-        <MatchupTab teams={teams} league={league} myTeam={myTeam} />
+        <MatchupTab teams={teams} league={league} myTeam={myTeam} scores={scores} />
       )}
       {activeTab === 'settings' && (
         <SettingsTab
