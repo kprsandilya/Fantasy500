@@ -1,42 +1,45 @@
-import { type FormEvent, useEffect, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import {
-  approveJoinRequest,
   getDraft,
   getLeague,
   getTeams,
-  joinLeague,
   listJoinRequests,
-  oidString,
-  rejectJoinRequest,
-  startDraft,
-  updateLeague,
   type DraftSession,
   type JoinRequest,
   type League,
   type Team,
 } from '../api'
 import { useAuth } from '../AuthContext'
+import { LeagueTab, RosterTab, DraftTab, MatchupTab, SettingsTab } from '../components/league-tabs'
+
+type TabId = 'league' | 'roster' | 'draft' | 'matchup' | 'settings'
+
+const TABS: { id: TabId; label: string; icon: string }[] = [
+  { id: 'league', label: 'League', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1' },
+  { id: 'roster', label: 'Roster', icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z' },
+  { id: 'draft', label: 'Draft', icon: 'M13 10V3L4 14h7v7l9-11h-7z' },
+  { id: 'matchup', label: 'Matchup', icon: 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z' },
+  { id: 'settings', label: 'Settings', icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z' },
+]
 
 export function LeaguePage() {
   const { id } = useParams()
   const { token } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
+
   const [league, setLeague] = useState<League | null>(null)
   const [draft, setDraft] = useState<DraftSession | null>(null)
   const [teams, setTeams] = useState<Team[]>([])
   const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([])
-  const [teamName, setTeamName] = useState('My desk')
   const [msg, setMsg] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [editing, setEditing] = useState(false)
 
-  const [editName, setEditName] = useState('')
-  const [editTeams, setEditTeams] = useState(4)
-  const [editBuyIn, setEditBuyIn] = useState<number | ''>('')
-  const [editRounds, setEditRounds] = useState(10)
-  const [editRoster, setEditRoster] = useState(10)
-  const [editTimer, setEditTimer] = useState(0)
-  const [saving, setSaving] = useState(false)
+  const activeTab = (searchParams.get('tab') as TabId) || 'league'
+  const setActiveTab = useCallback(
+    (t: TabId) => setSearchParams({ tab: t }, { replace: true }),
+    [setSearchParams],
+  )
 
   const walletRef = useRef<string | null>(null)
 
@@ -53,7 +56,7 @@ export function LeaguePage() {
     }
   }, [token])
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     if (!id) return
     try {
       const [l, d, t, jr] = await Promise.all([
@@ -71,52 +74,13 @@ export function LeaguePage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [id, token])
 
   useEffect(() => {
     void refresh()
     const t = setInterval(() => void refresh(), 5000)
     return () => clearInterval(t)
-  }, [id, token])
-
-  function openEditor() {
-    if (!league) return
-    setEditName(league.name)
-    setEditTeams(league.team_count)
-    setEditBuyIn(
-      league.buy_in_lamports ? league.buy_in_lamports / 1_000_000_000 : '',
-    )
-    setEditRounds(league.settings?.snake_rounds ?? 10)
-    setEditRoster(league.settings?.roster_size ?? 10)
-    setEditTimer(league.settings?.draft_timer_seconds ?? 0)
-    setEditing(true)
-    setMsg(null)
-  }
-
-  async function handleSave(e: FormEvent) {
-    e.preventDefault()
-    if (!token || !id) return
-    setSaving(true)
-    setMsg(null)
-    try {
-      const updated = await updateLeague(token, id, {
-        name: editName || undefined,
-        team_count: editTeams,
-        buy_in_lamports:
-          editBuyIn === '' ? undefined : Math.round(Number(editBuyIn) * 1_000_000_000),
-        snake_rounds: editRounds,
-        roster_size: editRoster,
-        draft_timer_seconds: editTimer,
-      })
-      setLeague(updated)
-      setEditing(false)
-      setMsg('Settings saved!')
-    } catch (err) {
-      setMsg(err instanceof Error ? err.message : 'Save failed')
-    } finally {
-      setSaving(false)
-    }
-  }
+  }, [refresh])
 
   if (!id) return null
 
@@ -129,12 +93,8 @@ export function LeaguePage() {
   }
 
   const isCommissioner =
-    !!walletRef.current &&
-    !!league &&
-    walletRef.current === league.commissioner_wallet
-
+    !!walletRef.current && !!league && walletRef.current === league.commissioner_wallet
   const myTeam = teams.find((t) => t.owner_wallet === walletRef.current) ?? null
-  const hasJoined = myTeam !== null
   const joinedCount = teams.length
   const maxTeams = league?.team_count ?? 0
 
@@ -145,36 +105,21 @@ export function LeaguePage() {
     completed: 'bg-slate-800 text-slate-400',
   }
 
+  const pendingCount = joinRequests.filter((r) => r.status === 'pending').length
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* League header */}
       <header className="space-y-3">
         <Link to="/" className="text-sm text-slate-500 hover:text-slate-300 transition-colors">
           &larr; All leagues
         </Link>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold text-white">
-              {league?.name ?? 'League'}
-            </h1>
-            <p className="text-sm text-slate-500 font-mono break-all mt-1">{id}</p>
-          </div>
-          <div className="flex items-center gap-2">
-            {isCommissioner && league?.status === 'forming' && !editing && (
-              <button
-                type="button"
-                onClick={openEditor}
-                className="inline-flex items-center gap-1.5 rounded-md border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-slate-700 transition-colors"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-                Edit settings
-              </button>
-            )}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-white">{league?.name ?? 'League'}</h1>
             {league && (
               <span
-                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${
+                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                   statusColor[league.status] ?? 'bg-slate-800 text-slate-500'
                 }`}
               >
@@ -183,447 +128,87 @@ export function LeaguePage() {
               </span>
             )}
           </div>
+          <div className="flex items-center gap-2 text-xs text-slate-500">
+            <span>{joinedCount}/{maxTeams} players</span>
+            <span>&middot;</span>
+            <span>Season {league?.season_year}</span>
+          </div>
         </div>
         {isCommissioner && (
-          <p className="text-xs text-emerald-600">You are the commissioner</p>
+          <p className="text-xs text-emerald-600">Commissioner</p>
         )}
       </header>
 
-      {/* Edit league form */}
-      {editing && league && (
-        <section className="rounded-xl border border-emerald-800/50 bg-emerald-950/20 p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-medium text-white">Edit League Settings</h2>
-            <button
-              type="button"
-              onClick={() => setEditing(false)}
-              className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-          <form className="grid gap-4 sm:grid-cols-2" onSubmit={handleSave}>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-400">League name</span>
-              <input
-                className="w-full rounded-md bg-slate-950 border border-slate-700 px-3 py-2 focus:border-emerald-600 focus:outline-none"
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-400">Teams</span>
-              <input
-                type="number"
-                min={2}
-                max={32}
-                className="w-full rounded-md bg-slate-950 border border-slate-700 px-3 py-2 focus:border-emerald-600 focus:outline-none"
-                value={editTeams}
-                onChange={(e) => setEditTeams(Number(e.target.value))}
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-400">Snake rounds</span>
-              <input
-                type="number"
-                min={1}
-                max={30}
-                className="w-full rounded-md bg-slate-950 border border-slate-700 px-3 py-2 focus:border-emerald-600 focus:outline-none"
-                value={editRounds}
-                onChange={(e) => setEditRounds(Number(e.target.value))}
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-400">Roster size</span>
-              <input
-                type="number"
-                min={1}
-                max={30}
-                className="w-full rounded-md bg-slate-950 border border-slate-700 px-3 py-2 focus:border-emerald-600 focus:outline-none"
-                value={editRoster}
-                onChange={(e) => setEditRoster(Number(e.target.value))}
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-400">Buy-in (SOL, blank = free)</span>
-              <input
-                type="number"
-                step="0.01"
-                min={0}
-                className="w-full rounded-md bg-slate-950 border border-slate-700 px-3 py-2 focus:border-emerald-600 focus:outline-none"
-                value={editBuyIn}
-                onChange={(e) =>
-                  setEditBuyIn(e.target.value === '' ? '' : Number(e.target.value))
-                }
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-400">Pick timer (seconds, 0 = off)</span>
-              <input
-                type="number"
-                min={0}
-                max={600}
-                className="w-full rounded-md bg-slate-950 border border-slate-700 px-3 py-2 focus:border-emerald-600 focus:outline-none"
-                value={editTimer}
-                onChange={(e) => setEditTimer(Number(e.target.value))}
-              />
-            </label>
-            <div className="sm:col-span-2 flex items-center gap-3">
-              <button
-                type="submit"
-                disabled={saving}
-                className="rounded-md bg-emerald-600 px-5 py-2 font-medium text-white hover:bg-emerald-500 transition-colors disabled:opacity-50"
-              >
-                {saving ? 'Saving...' : 'Save changes'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setEditing(false)}
-                className="rounded-md border border-slate-700 px-4 py-2 text-sm text-slate-400 hover:bg-slate-800 transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
-        </section>
-      )}
-
-      {/* League info */}
-      {league && (
-        <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          {[
-            {
-              label: 'Players',
-              value: `${joinedCount}/${maxTeams}`,
-              accent: joinedCount === maxTeams,
-            },
-            { label: 'Rounds', value: league.settings?.snake_rounds ?? 10 },
-            { label: 'Roster', value: league.settings?.roster_size ?? 10 },
-            {
-              label: 'Pick Timer',
-              value: league.settings?.draft_timer_seconds
-                ? `${league.settings.draft_timer_seconds}s`
-                : 'Off',
-            },
-            { label: 'Season', value: league.season_year },
-            {
-              label: 'Buy-in',
-              value: league.buy_in_lamports
-                ? `${(league.buy_in_lamports / 1_000_000_000).toFixed(2)} SOL`
-                : 'Free',
-            },
-          ].map((stat) => (
-            <div
-              key={stat.label}
-              className="rounded-lg border border-slate-800 bg-slate-900/40 px-4 py-3"
-            >
-              <div className="text-[0.65rem] uppercase tracking-wider text-slate-500">
-                {stat.label}
-              </div>
-              <div
-                className={`text-lg font-semibold mt-0.5 ${
-                  'accent' in stat && stat.accent ? 'text-emerald-400' : 'text-white'
-                }`}
-              >
-                {stat.value}
-              </div>
-            </div>
-          ))}
-
-          {/* Joined team roster */}
-          {teams.length > 0 && (
-            <div className="col-span-2 sm:col-span-3 lg:col-span-6 rounded-lg border border-slate-800 bg-slate-900/40 px-4 py-3">
-              <div className="text-[0.65rem] uppercase tracking-wider text-slate-500 mb-2">
-                Roster
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {teams.map((t) => {
-                  const isMe = t.owner_wallet === walletRef.current
-                  return (
-                    <span
-                      key={t.draft_position}
-                      className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium ${
-                        isMe
-                          ? 'bg-emerald-900/40 border border-emerald-700/40 text-emerald-300'
-                          : 'bg-slate-800 border border-slate-700/40 text-slate-300'
-                      }`}
-                    >
-                      <span className="text-slate-500 tabular-nums">{t.draft_position}.</span>
-                      {t.name}
-                      {isMe && (
-                        <span className="text-[0.6rem] text-emerald-500 font-semibold">(You)</span>
-                      )}
-                    </span>
-                  )
-                })}
-                {Array.from({ length: maxTeams - joinedCount }, (_, i) => (
-                  <span
-                    key={`empty-${i}`}
-                    className="inline-flex items-center rounded-md px-2.5 py-1 text-xs text-slate-600 bg-slate-800/40 border border-dashed border-slate-700/30"
-                  >
-                    Open slot
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* Join / Start draft actions */}
-      {token && league?.status === 'forming' && (() => {
-        const myRequest = joinRequests.find((r) => r.wallet === walletRef.current)
-        return (
-          <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-5 space-y-4">
-            {hasJoined ? (
-              <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-900/40">
-                  <svg className="w-4.5 h-4.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-white">
-                    You&apos;re in as <span className="text-emerald-400">{myTeam?.name}</span>
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    Draft position #{myTeam?.draft_position} &middot; Waiting for {maxTeams - joinedCount} more player{maxTeams - joinedCount !== 1 ? 's' : ''}
-                  </p>
-                </div>
-              </div>
-            ) : myRequest?.status === 'pending' ? (
-              <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-amber-900/40">
-                  <svg className="w-4.5 h-4.5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-white">
-                    Request pending for <span className="text-amber-400">{myRequest.team_name}</span>
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    Waiting for commissioner approval
-                  </p>
-                </div>
-              </div>
-            ) : myRequest?.status === 'rejected' ? (
-              <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-red-900/40">
-                  <svg className="w-4.5 h-4.5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-white">
-                    Your request was <span className="text-red-400">declined</span>
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    You can submit a new request with a different team name
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-3 items-end ml-auto">
-                  <label className="text-sm space-y-1 flex-1 min-w-[12rem]">
-                    <span className="text-slate-400">Team name</span>
-                    <input
-                      className="w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2 focus:border-emerald-600 focus:outline-none"
-                      value={teamName}
-                      onChange={(e) => setTeamName(e.target.value)}
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    className="rounded-md bg-emerald-600 px-4 py-2 font-medium hover:bg-emerald-500 transition-colors"
-                    onClick={() =>
-                      joinLeague(token, id, teamName)
-                        .then(() => {
-                          setMsg('Request sent! Waiting for approval.')
-                          void refresh()
-                        })
-                        .catch((e) => setMsg(String(e)))
-                    }
-                  >
-                    Re-request
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <>
-                <h2 className="text-lg font-medium text-white">Join this league</h2>
-                <div className="flex flex-wrap gap-3 items-end">
-                  <label className="text-sm space-y-1 flex-1 min-w-[12rem]">
-                    <span className="text-slate-400">Team name</span>
-                    <input
-                      className="w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2 focus:border-emerald-600 focus:outline-none"
-                      value={teamName}
-                      onChange={(e) => setTeamName(e.target.value)}
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    className="rounded-md bg-emerald-600 px-4 py-2 font-medium hover:bg-emerald-500 transition-colors"
-                    onClick={() =>
-                      joinLeague(token, id, teamName)
-                        .then(() => {
-                          setMsg('Request sent! Waiting for commissioner approval.')
-                          void refresh()
-                        })
-                        .catch((e) => setMsg(String(e)))
-                    }
-                  >
-                    Request to join
-                  </button>
-                </div>
-              </>
+      {/* Tab bar */}
+      <nav className="flex gap-1 border-b border-slate-800 -mb-px overflow-x-auto scrollbar-hide">
+        {TABS.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setActiveTab(tab.id)}
+            className={`relative flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-colors ${
+              activeTab === tab.id
+                ? 'text-emerald-400'
+                : 'text-slate-500 hover:text-slate-300'
+            }`}
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d={tab.icon} />
+            </svg>
+            {tab.label}
+            {tab.id === 'draft' && pendingCount > 0 && isCommissioner && (
+              <span className="ml-0.5 inline-flex items-center justify-center min-w-[1.1rem] h-4 px-1 rounded-full bg-amber-600 text-[0.6rem] font-bold text-white">
+                {pendingCount}
+              </span>
             )}
-            {isCommissioner && (
-              <div className="space-y-2 pt-1 border-t border-slate-800">
-                <button
-                  type="button"
-                  className="rounded-md bg-amber-600 px-4 py-2 text-sm font-medium hover:bg-amber-500 transition-colors"
-                  onClick={() =>
-                    startDraft(token, id)
-                      .then(() => void refresh())
-                      .catch((e) => setMsg(String(e)))
-                  }
-                >
-                  Start draft
-                </button>
-                {joinedCount < maxTeams && (
-                  <p className="text-xs text-slate-500">
-                    {joinedCount}/{maxTeams} players joined &mdash; all slots must be filled first
-                  </p>
-                )}
-              </div>
+            {activeTab === tab.id && (
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-emerald-400 rounded-t" />
             )}
-            {msg && <p className="text-sm text-amber-300">{msg}</p>}
-          </section>
-        )
-      })()}
+          </button>
+        ))}
+      </nav>
 
-      {/* Commissioner join-request approval panel */}
-      {isCommissioner && league?.status === 'forming' && joinRequests.length > 0 && (
-        <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-medium text-white flex items-center gap-2">
-              Join Requests
-              {joinRequests.filter((r) => r.status === 'pending').length > 0 && (
-                <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full bg-amber-600 text-xs font-bold text-white">
-                  {joinRequests.filter((r) => r.status === 'pending').length}
-                </span>
-              )}
-            </h2>
-          </div>
-          <div className="divide-y divide-slate-800">
-            {joinRequests.map((req) => {
-              const rid = oidString(req._id)!
-              const isPending = req.status === 'pending'
-              return (
-                <div key={rid} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-white truncate">{req.team_name}</p>
-                    <p className="text-xs text-slate-500 font-mono truncate">{req.wallet}</p>
-                  </div>
-                  {isPending ? (
-                    <div className="flex items-center gap-2 shrink-0">
-                      <button
-                        type="button"
-                        className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-500 transition-colors"
-                        onClick={() =>
-                          approveJoinRequest(token!, id!, rid)
-                            .then(() => void refresh())
-                            .catch((e) => setMsg(String(e)))
-                        }
-                      >
-                        Approve
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded-md border border-red-800 bg-red-950/40 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-900/40 transition-colors"
-                        onClick={() =>
-                          rejectJoinRequest(token!, id!, rid)
-                            .then(() => void refresh())
-                            .catch((e) => setMsg(String(e)))
-                        }
-                      >
-                        Reject
-                      </button>
-                    </div>
-                  ) : (
-                    <span
-                      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold shrink-0 ${
-                        req.status === 'approved'
-                          ? 'bg-emerald-900/40 text-emerald-400'
-                          : 'bg-red-900/40 text-red-400'
-                      }`}
-                    >
-                      <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                      {req.status}
-                    </span>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </section>
+      {/* Tab content */}
+      {activeTab === 'league' && (
+        <LeagueTab league={league} teams={teams} myTeam={myTeam} walletRef={walletRef} />
+      )}
+      {activeTab === 'roster' && (
+        <RosterTab teams={teams} myTeam={myTeam} walletRef={walletRef} league={league} />
+      )}
+      {activeTab === 'draft' && (
+        <DraftTab
+          id={id}
+          token={token}
+          league={league}
+          draft={draft}
+          teams={teams}
+          joinRequests={joinRequests}
+          isCommissioner={isCommissioner}
+          myTeam={myTeam}
+          walletRef={walletRef}
+          msg={msg}
+          setMsg={setMsg}
+          refresh={refresh}
+          joinedCount={joinedCount}
+          maxTeams={maxTeams}
+        />
+      )}
+      {activeTab === 'matchup' && (
+        <MatchupTab teams={teams} league={league} myTeam={myTeam} />
+      )}
+      {activeTab === 'settings' && (
+        <SettingsTab
+          id={id}
+          token={token}
+          league={league}
+          setLeague={setLeague}
+          isCommissioner={isCommissioner}
+          joinedCount={joinedCount}
+          maxTeams={maxTeams}
+        />
       )}
 
-      {/* Draft section */}
-      {draft && (
-        <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-5 space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-lg font-medium text-white">Draft</h2>
-            <span className="text-xs text-slate-500 capitalize">{draft.status}</span>
-          </div>
-
-          {(draft.status === 'in_progress' || draft.status === 'completed') && (
-            <div className="space-y-3">
-              <p className="text-sm text-slate-400">
-                {draft.picks.length} picks made
-                {draft.status === 'in_progress' && ` · Round ${draft.current_round}`}
-              </p>
-
-              <Link
-                to={`/league/${id}/draft`}
-                className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-5 py-2.5 font-semibold text-white hover:bg-emerald-500 transition-colors"
-              >
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-                {draft.status === 'in_progress' ? 'Enter Draft Room' : 'View Draft Results'}
-              </Link>
-
-              {draft.picks.length > 0 && (
-                <div className="mt-3">
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">
-                    Latest picks
-                  </h3>
-                  <div className="flex flex-wrap gap-1.5">
-                    {[...draft.picks]
-                      .reverse()
-                      .slice(0, 12)
-                      .map((p) => (
-                        <span
-                          key={p.overall}
-                          className="inline-flex items-center gap-1 rounded-md bg-slate-800 px-2 py-1 text-xs"
-                        >
-                          <span className="text-slate-500">#{p.overall}</span>
-                          <span className="font-mono font-semibold text-emerald-400">
-                            {p.symbol}
-                          </span>
-                        </span>
-                      ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </section>
-      )}
-
-      {msg && !editing && league?.status !== 'forming' && (
-        <p className="text-sm text-amber-300">{msg}</p>
-      )}
+      {msg && <p className="text-sm text-amber-300">{msg}</p>}
     </div>
   )
 }
