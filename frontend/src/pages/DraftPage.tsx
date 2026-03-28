@@ -25,7 +25,7 @@ type TabId = 'board' | 'players' | 'myteam'
 export function DraftPage() {
   const { id } = useParams()
   const { token } = useAuth()
-  const wsPayload = useFantasyWs(Boolean(token))
+  const { last: wsPayload } = useFantasyWs(Boolean(token))
 
   const [league, setLeague] = useState<League | null>(null)
   const [draft, setDraft] = useState<DraftSession | null>(null)
