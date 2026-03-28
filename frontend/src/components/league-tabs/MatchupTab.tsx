@@ -151,6 +151,8 @@ export function MatchupTab({
 
   const activeA = teamA?.roster.filter((r) => r.slot !== 'bench') ?? []
   const activeB = teamB?.roster.filter((r) => r.slot !== 'bench') ?? []
+  const benchA = teamA?.roster.filter((r) => r.slot === 'bench') ?? []
+  const benchB = teamB?.roster.filter((r) => r.slot === 'bench') ?? []
 
   const isPast =
     weekScoreboard !== null &&
@@ -278,33 +280,10 @@ export function MatchupTab({
 
         {/* Per-stock scores */}
         {isBye ? (
-          <div className="p-4 space-y-1.5">
-            <p className="text-[0.6rem] uppercase tracking-wider text-slate-500 mb-2">
-              Active Roster
-            </p>
-            {activeA.length > 0 ? (
-              activeA.map((r) => (
-                <div
-                  key={r.symbol}
-                  className="flex items-center justify-between text-xs"
-                >
-                  <span className="font-mono text-emerald-400">{r.symbol}</span>
-                  <span className="text-slate-400 tabular-nums">
-                    {stockScoresA.has(r.symbol)
-                      ? stockScoresA.get(r.symbol)!.toFixed(2)
-                      : '\u2014'}
-                  </span>
-                </div>
-              ))
-            ) : (
-              <p className="text-xs text-slate-600">No active roster</p>
-            )}
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 divide-x divide-slate-800/50">
+          <>
             <div className="p-4 space-y-1.5">
               <p className="text-[0.6rem] uppercase tracking-wider text-slate-500 mb-2">
-                Active
+                Active Roster
               </p>
               {activeA.length > 0 ? (
                 activeA.map((r) => (
@@ -312,9 +291,7 @@ export function MatchupTab({
                     key={r.symbol}
                     className="flex items-center justify-between text-xs"
                   >
-                    <span className="font-mono text-emerald-400">
-                      {r.symbol}
-                    </span>
+                    <span className="font-mono text-emerald-400">{r.symbol}</span>
                     <span className="text-slate-400 tabular-nums">
                       {stockScoresA.has(r.symbol)
                         ? stockScoresA.get(r.symbol)!.toFixed(2)
@@ -326,31 +303,147 @@ export function MatchupTab({
                 <p className="text-xs text-slate-600">No active roster</p>
               )}
             </div>
-            <div className="p-4 space-y-1.5">
-              <p className="text-[0.6rem] uppercase tracking-wider text-slate-500 mb-2">
-                Active
-              </p>
-              {activeB.length > 0 ? (
-                activeB.map((r) => (
+            {benchA.length > 0 && (
+              <div className="px-4 pb-4 pt-0 space-y-1.5 border-t border-slate-800/50">
+                <div className="pt-3">
+                  <p className="text-[0.6rem] uppercase tracking-wider text-slate-600 mb-0.5">
+                    Bench
+                  </p>
+                  <p className="text-[0.55rem] text-slate-600 mb-2">
+                    Not counted in matchup score
+                  </p>
+                </div>
+                {benchA.map((r) => (
                   <div
                     key={r.symbol}
                     className="flex items-center justify-between text-xs"
                   >
-                    <span className="font-mono text-emerald-400">
-                      {r.symbol}
-                    </span>
-                    <span className="text-slate-400 tabular-nums">
-                      {stockScoresB.has(r.symbol)
-                        ? stockScoresB.get(r.symbol)!.toFixed(2)
+                    <span className="font-mono text-slate-500">{r.symbol}</span>
+                    <span className="text-slate-500 tabular-nums">
+                      {stockScoresA.has(r.symbol)
+                        ? stockScoresA.get(r.symbol)!.toFixed(2)
                         : '\u2014'}
                     </span>
                   </div>
-                ))
-              ) : (
-                <p className="text-xs text-slate-600">No active roster</p>
-              )}
+                ))}
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 divide-x divide-slate-800/50">
+              <div className="p-4 space-y-1.5">
+                <p className="text-[0.6rem] uppercase tracking-wider text-slate-500 mb-2">
+                  Active
+                </p>
+                {activeA.length > 0 ? (
+                  activeA.map((r) => (
+                    <div
+                      key={r.symbol}
+                      className="flex items-center justify-between text-xs"
+                    >
+                      <span className="font-mono text-emerald-400">
+                        {r.symbol}
+                      </span>
+                      <span className="text-slate-400 tabular-nums">
+                        {stockScoresA.has(r.symbol)
+                          ? stockScoresA.get(r.symbol)!.toFixed(2)
+                          : '\u2014'}
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-xs text-slate-600">No active roster</p>
+                )}
+              </div>
+              <div className="p-4 space-y-1.5">
+                <p className="text-[0.6rem] uppercase tracking-wider text-slate-500 mb-2">
+                  Active
+                </p>
+                {activeB.length > 0 ? (
+                  activeB.map((r) => (
+                    <div
+                      key={r.symbol}
+                      className="flex items-center justify-between text-xs"
+                    >
+                      <span className="font-mono text-emerald-400">
+                        {r.symbol}
+                      </span>
+                      <span className="text-slate-400 tabular-nums">
+                        {stockScoresB.has(r.symbol)
+                          ? stockScoresB.get(r.symbol)!.toFixed(2)
+                          : '\u2014'}
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-xs text-slate-600">No active roster</p>
+                )}
+              </div>
             </div>
-          </div>
+            {(benchA.length > 0 || benchB.length > 0) && (
+              <div className="grid grid-cols-2 divide-x divide-slate-800/50 border-t border-slate-800/50 bg-slate-950/30">
+                <div className="p-4 space-y-1.5">
+                  <div>
+                    <p className="text-[0.6rem] uppercase tracking-wider text-slate-600 mb-0.5">
+                      Bench
+                    </p>
+                    <p className="text-[0.55rem] text-slate-600 mb-2">
+                      Not counted in matchup
+                    </p>
+                  </div>
+                  {benchA.length > 0 ? (
+                    benchA.map((r) => (
+                      <div
+                        key={r.symbol}
+                        className="flex items-center justify-between text-xs"
+                      >
+                        <span className="font-mono text-slate-500">
+                          {r.symbol}
+                        </span>
+                        <span className="text-slate-500 tabular-nums">
+                          {stockScoresA.has(r.symbol)
+                            ? stockScoresA.get(r.symbol)!.toFixed(2)
+                            : '\u2014'}
+                        </span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-xs text-slate-700">No bench</p>
+                  )}
+                </div>
+                <div className="p-4 space-y-1.5">
+                  <div>
+                    <p className="text-[0.6rem] uppercase tracking-wider text-slate-600 mb-0.5">
+                      Bench
+                    </p>
+                    <p className="text-[0.55rem] text-slate-600 mb-2">
+                      Not counted in matchup
+                    </p>
+                  </div>
+                  {benchB.length > 0 ? (
+                    benchB.map((r) => (
+                      <div
+                        key={r.symbol}
+                        className="flex items-center justify-between text-xs"
+                      >
+                        <span className="font-mono text-slate-500">
+                          {r.symbol}
+                        </span>
+                        <span className="text-slate-500 tabular-nums">
+                          {stockScoresB.has(r.symbol)
+                            ? stockScoresB.get(r.symbol)!.toFixed(2)
+                            : '\u2014'}
+                        </span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-xs text-slate-700">No bench</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </>
         )}
 
         {/* Winner banner for completed weeks */}
