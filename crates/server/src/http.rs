@@ -20,6 +20,8 @@ use shared::{
     WalletAuthPayload, WaiverClaim, WeeklyScoreboard, WsServerMessage,
 };
 
+use rand::seq::SliceRandom;
+
 use crate::auth_wallet;
 use crate::chain_tx;
 use crate::draft_logic::{direction_for_round_from_pick, next_clock_team};
@@ -380,7 +382,7 @@ async fn join_league(
     } else {
         JoinRequestStatus::Pending
     };
-    let now = chrono::Utc::now();
+    let now = chrono::Utc::now().timestamp();
     let mut req = JoinRequest {
         id: None,
         league_id: league_oid,
@@ -493,11 +495,11 @@ async fn approve_join(
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
 
-    let now = chrono::Utc::now();
+    let now = chrono::Utc::now().timestamp();
     jr_col
         .update_one(
             mongodb::bson::doc! { "_id": req_oid },
-            mongodb::bson::doc! { "$set": { "status": "approved", "resolved_at": bson::DateTime::from_chrono(now) } },
+            mongodb::bson::doc! { "$set": { "status": "approved", "resolved_at": now } },
         )
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
@@ -535,11 +537,11 @@ async fn reject_join(
         return Err(AppError::Conflict("request already resolved".into()));
     }
 
-    let now = chrono::Utc::now();
+    let now = chrono::Utc::now().timestamp();
     jr_col
         .update_one(
             mongodb::bson::doc! { "_id": req_oid },
-            mongodb::bson::doc! { "$set": { "status": "rejected", "resolved_at": bson::DateTime::from_chrono(now) } },
+            mongodb::bson::doc! { "$set": { "status": "rejected", "resolved_at": now } },
         )
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
@@ -575,7 +577,6 @@ async fn start_draft(
     }
     let mut cur = teams_col
         .find(mongodb::bson::doc! { "league_id": league_oid })
-        .sort(mongodb::bson::doc! { "draft_position": 1 })
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
     let mut teams: Vec<Team> = Vec::new();
@@ -586,7 +587,25 @@ async fn start_draft(
     {
         teams.push(t);
     }
-    teams.sort_by_key(|t| t.draft_position);
+
+    {
+        let mut rng = rand::thread_rng();
+        teams.shuffle(&mut rng);
+    }
+
+    for (i, team) in teams.iter().enumerate() {
+        if let Some(tid) = team.id {
+            let pos = (i as u8) + 1;
+            teams_col
+                .update_one(
+                    mongodb::bson::doc! { "_id": tid },
+                    mongodb::bson::doc! { "$set": { "draft_position": pos as i32 } },
+                )
+                .await
+                .map_err(|e| AppError::Internal(e.to_string()))?;
+        }
+    }
+
     let order: Vec<ObjectId> = teams.iter().filter_map(|t| t.id).collect();
     let clock = order.first().cloned();
     let deadline = if league.settings.draft_timer_seconds > 0 {

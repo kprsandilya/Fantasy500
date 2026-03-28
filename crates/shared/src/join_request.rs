@@ -16,8 +16,7 @@ pub struct JoinRequest {
     pub wallet: String,
     pub team_name: String,
     pub status: JoinRequestStatus,
-    #[serde(with = "chrono::serde::ts_seconds")]
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    #[serde(with = "chrono::serde::ts_seconds_option")]
-    pub resolved_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub created_at: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved_at: Option<i64>,
 }
