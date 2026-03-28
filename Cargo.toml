@@ -1,0 +1,31 @@
+[workspace]
+resolver = "2"
+members = ["crates/shared", "crates/server", "crates/worker"]
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+
+[workspace.dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+anyhow = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+mongodb = "3.1"
+bson = { version = "2.13", features = ["chrono-0_4", "serde_with"] }
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+futures = "0.3"
+async-trait = "0.1"
+hex = "0.4"
+sha2 = "0.10"
+ed25519-dalek = { version = "2", features = ["serde"] }
+bs58 = "0.5"
+jsonwebtoken = "9"
+axum = { version = "0.7", features = ["macros", "ws"] }
+tower = "0.5"
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+shared = { path = "crates/shared" }
