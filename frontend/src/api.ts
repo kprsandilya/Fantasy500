@@ -217,3 +217,34 @@ export async function draftPick(
     body: JSON.stringify({ symbol, company_name }),
   })
 }
+
+export type TeamWeekTotal = {
+  team_id: string | { $oid: string }
+  owner_wallet: string
+  points: number
+}
+
+export type WeeklyScoreboard = {
+  league_id: string | { $oid: string }
+  week_start: string
+  team_totals: TeamWeekTotal[]
+}
+
+export type PlayerWeeklyScore = {
+  wallet: string
+  team_id: string | { $oid: string }
+  symbol: string
+  week_start: string
+  pct_change: number
+  points: number
+}
+
+export type ScoresResponse = {
+  weeks: WeeklyScoreboard[]
+  player_scores: PlayerWeeklyScore[]
+  current_week_start: string
+}
+
+export async function getScores(leagueId: string) {
+  return apiFetch<ScoresResponse>(`/api/leagues/${leagueId}/scores`)
+}
