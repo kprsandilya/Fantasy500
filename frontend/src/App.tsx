@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { BrowserRouter, Link, Route, Routes } from 'react-router-dom'
 import '@solana/wallet-adapter-react-ui/styles.css'
 import { AuthProvider, useAuth } from './AuthContext'
+import logoSrc from './assets/logo.png'
 import { endpoint, SOLANA_NETWORK } from './config'
 import { TickerBar } from './components/TickerBar'
 import { HomePage } from './pages/HomePage'
@@ -64,9 +65,7 @@ function Shell() {
       <header className="border-b border-slate-800/60 bg-slate-950/80 backdrop-blur-xl sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
           <Link to="/" className="flex items-center gap-2 group">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-600 text-xs font-black text-white shadow-md shadow-emerald-900/30">
-              F5
-            </div>
+            <img src={logoSrc} alt="Fantasy500" className="h-8 w-8 rounded-lg shadow-md shadow-emerald-900/30" />
             <span className="font-bold tracking-tight text-white group-hover:text-emerald-400 transition-colors">
               Fantasy500
             </span>
@@ -134,7 +133,8 @@ export default function App() {
         <div className="relative">
           <WalletTree />
         </div>
-        <footer className="text-center text-xs text-slate-700 pb-8 pt-4 space-y-1">
+        <footer className="text-center text-xs text-slate-700 pb-8 pt-4 space-y-2">
+          <img src={logoSrc} alt="" className="mx-auto h-6 w-6 opacity-40" />
           <p className="text-slate-600">Fantasy500 — fantasy sports for the stock market</p>
           <p>Off-chain game logic · {SOLANA_NETWORK} · verifiable buy-ins & commitments</p>
         </footer>

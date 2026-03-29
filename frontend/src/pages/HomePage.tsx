@@ -11,6 +11,7 @@ import {
 } from '../api'
 import { NumberFieldInt, NumberFieldSol } from '../components/NumberField'
 import { useAuth } from '../AuthContext'
+import logoSrc from '../assets/logo.png'
 
 const STATUS_STYLE: Record<string, string> = {
   forming: 'bg-blue-500/15 text-blue-400 ring-blue-500/30',
@@ -153,6 +154,11 @@ export function HomePage() {
         <FloatingTickers />
 
         <div className="relative z-10 space-y-5">
+          <img
+            src={logoSrc}
+            alt="Fantasy500"
+            className="mx-auto h-24 w-24 drop-shadow-[0_0_20px_rgba(16,185,129,0.25)]"
+          />
           <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/5 px-4 py-1.5 text-xs font-medium text-emerald-400 tracking-wide uppercase shadow-[0_0_15px_rgba(16,185,129,0.08)]">
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />

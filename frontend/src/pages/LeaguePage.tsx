@@ -216,6 +216,7 @@ export function LeaguePage() {
             token={token}
             league={league}
             teams={teams}
+            scores={scores}
             isCommissioner={isCommissioner}
             walletRef={walletRef}
           />
