@@ -3,10 +3,15 @@ services:
   mongo:
     image: mongo:7
     restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASS:?Set MONGO_PASS in your environment}
     volumes:
       - mongo_data:/data/db
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      test: ["CMD", "mongosh", "-u", "${MONGO_USER:-admin}", "-p", "${MONGO_PASS}", "--authenticationDatabase", "admin", "--eval", "db.adminCommand('ping')"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -22,7 +27,7 @@ services:
       mongo:
         condition: service_healthy
     environment:
-      MONGO_URI: mongodb://mongo:27017
+      MONGO_URI: mongodb://${MONGO_USER:-admin}:${MONGO_PASS}@mongo:27017/?authSource=admin
       MONGO_DB: ${MONGO_DB:-fantasy500}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in your environment}
       BIND_ADDR: 0.0.0.0:8080
@@ -42,7 +47,7 @@ services:
       mongo:
         condition: service_healthy
     environment:
-      MONGO_URI: mongodb://mongo:27017
+      MONGO_URI: mongodb://${MONGO_USER:-admin}:${MONGO_PASS}@mongo:27017/?authSource=admin
       MONGO_DB: ${MONGO_DB:-fantasy500}
       RUST_LOG: ${RUST_LOG:-info}
 
