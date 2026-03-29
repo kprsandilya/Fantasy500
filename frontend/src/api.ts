@@ -289,6 +289,19 @@ export async function getScores(leagueId: string) {
   return apiFetch<ScoresResponse>(`/api/leagues/${leagueId}/scores`)
 }
 
+// ─── Stock Alerts ──────────────────────────────────────────────────────
+
+export type StockAlert = {
+  symbol: string
+  alert_type: string
+  headline: string
+  date?: string | null
+}
+
+export async function getStockAlerts(leagueId: string) {
+  return apiFetch<StockAlert[]>(`/api/leagues/${leagueId}/stock-alerts`)
+}
+
 // ─── Commissioner Report ───────────────────────────────────────────────
 
 export type PlayerFeedback = {

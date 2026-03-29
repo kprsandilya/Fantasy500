@@ -253,6 +253,7 @@ pub fn router() -> Router<Arc<AppState>> {
             "/api/leagues/:id/commissioner-report/generate",
             post(generate_commissioner_report),
         )
+        .route("/api/leagues/:id/stock-alerts", get(get_stock_alerts))
         .route("/api/chain/ix/init-league", get(chain_init_ix))
         .route("/api/chain/ix/record-pick", get(chain_record_pick_ix))
         .route("/api/chain/ix/deposit-buy-in", get(chain_deposit_ix))
@@ -1451,6 +1452,38 @@ async fn chain_deposit_ix(
 ) -> AppResult<Json<chain_tx::InstructionDraft>> {
     let ix = chain_tx::deposit_buy_in_instruction(&state.config)?;
     Ok(Json(ix))
+}
+
+// ─── Stock Alerts ──────────────────────────────────────────────────────
+
+async fn get_stock_alerts(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> AppResult<Json<Vec<quotes::StockAlert>>> {
+    let league_oid =
+        ObjectId::parse_str(&id).map_err(|_| AppError::BadRequest("bad id".into()))?;
+
+    let teams_col = state.db.collection::<Team>("teams");
+    let mut tcur = teams_col
+        .find(bson::doc! { "league_id": league_oid })
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let mut symbols = Vec::new();
+    while let Some(t) = tcur
+        .try_next()
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+    {
+        for r in &t.roster {
+            let s = r.symbol.to_uppercase();
+            if !symbols.contains(&s) {
+                symbols.push(s);
+            }
+        }
+    }
+
+    let alerts = quotes::fetch_stock_alerts(&symbols).await;
+    Ok(Json(alerts))
 }
 
 // ─── Commissioner Report ───────────────────────────────────────────────

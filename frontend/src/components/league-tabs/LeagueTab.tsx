@@ -1,6 +1,7 @@
-import { useMemo } from 'react'
-import { oidString, type League, type Team, type ScoresResponse } from '../../api'
+import { useMemo, useState } from 'react'
+import { oidString, type DraftSession, type League, type Team, type ScoresResponse } from '../../api'
 import { generateRoundRobin } from './MatchupTab'
+import { StandingsChart } from '../StandingsChart'
 import { WeeklyCard } from '../WeeklyCard'
 
 type Standing = {
@@ -10,18 +11,30 @@ type Standing = {
   seasonPct: number
 }
 
+type ActivityEvent = {
+  type: 'draft' | 'waiver'
+  teamName: string
+  ownerWallet: string
+  symbol: string
+  companyName: string
+  detail: string
+  timestamp: string
+}
+
 export function LeagueTab({
   league,
   teams,
   myTeam,
   walletRef,
   scores,
+  draft,
 }: {
   league: League | null
   teams: Team[]
   myTeam: Team | null
   walletRef: React.RefObject<string | null>
   scores: ScoresResponse | null
+  draft: DraftSession | null
 }) {
   const standings = useMemo<Standing[]>(() => {
     const stats = new Map<string, { wins: number }>()
@@ -82,6 +95,56 @@ export function LeagueTab({
           b.wins - a.wins || b.seasonPct - a.seasonPct,
       )
   }, [teams, scores])
+
+  const activity = useMemo<ActivityEvent[]>(() => {
+    const events: ActivityEvent[] = []
+    const teamMap = new Map(teams.map((t) => [oidString(t._id) ?? '', t]))
+
+    if (draft?.picks) {
+      for (const pick of draft.picks) {
+        const team = teamMap.get(oidString(pick.team_id) ?? '')
+        if (!team) continue
+        const rosterEntry = team.roster.find((r) => r.symbol === pick.symbol)
+        events.push({
+          type: 'draft',
+          teamName: team.name,
+          ownerWallet: team.owner_wallet,
+          symbol: pick.symbol,
+          companyName: pick.company_name,
+          detail: `Round ${pick.round}, Pick ${pick.overall}`,
+          timestamp: rosterEntry?.acquired_at ?? '',
+        })
+      }
+    }
+
+    for (const t of teams) {
+      for (const r of t.roster) {
+        if (r.source === 'waiver') {
+          events.push({
+            type: 'waiver',
+            teamName: t.name,
+            ownerWallet: t.owner_wallet,
+            symbol: r.symbol,
+            companyName: r.company_name,
+            detail: 'Waiver pickup',
+            timestamp: r.acquired_at,
+          })
+        }
+      }
+    }
+
+    events.sort((a, b) => {
+      if (!a.timestamp && !b.timestamp) return 0
+      if (!a.timestamp) return 1
+      if (!b.timestamp) return -1
+      return b.timestamp.localeCompare(a.timestamp)
+    })
+
+    return events
+  }, [teams, draft])
+
+  const [showAllActivity, setShowAllActivity] = useState(false)
+  const visibleActivity = showAllActivity ? activity : activity.slice(0, 10)
 
   return (
     <div className="space-y-6">
@@ -182,6 +245,21 @@ export function LeagueTab({
         )}
       </section>
 
+      {/* Standings trend chart */}
+      {scores && scores.weeks.length > 0 && teams.length > 1 && (
+        <section className="rounded-xl border border-slate-800 bg-slate-900/40 overflow-hidden">
+          <div className="px-5 py-3 border-b border-slate-800">
+            <h2 className="text-sm font-semibold text-white uppercase tracking-wider">
+              Season Trend
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">Cumulative points per team by week</p>
+          </div>
+          <div className="p-4">
+            <StandingsChart teams={teams} scores={scores} walletRef={walletRef} />
+          </div>
+        </section>
+      )}
+
       {/* Weekly Shareable Card */}
       {myTeam && scores && league?.status === 'active' && (
         <section className="rounded-xl border border-slate-800 bg-slate-900/40 overflow-hidden">
@@ -244,6 +322,77 @@ export function LeagueTab({
               )
             })}
           </div>
+        </section>
+      )}
+
+      {/* Activity feed */}
+      {activity.length > 0 && (
+        <section className="rounded-xl border border-slate-800 bg-slate-900/40 overflow-hidden">
+          <div className="px-5 py-3 border-b border-slate-800">
+            <h2 className="text-sm font-semibold text-white uppercase tracking-wider">
+              League Activity
+            </h2>
+          </div>
+          <div className="divide-y divide-slate-800/50">
+            {visibleActivity.map((ev, i) => {
+              const isMe = ev.ownerWallet === walletRef.current
+              return (
+                <div key={`${ev.symbol}-${ev.timestamp}-${i}`} className="flex items-start gap-3 px-5 py-3">
+                  <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold ${
+                    ev.type === 'draft'
+                      ? 'bg-amber-900/40 text-amber-400'
+                      : 'bg-blue-900/40 text-blue-400'
+                  }`}>
+                    {ev.type === 'draft' ? (
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                    ) : (
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                      </svg>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm text-slate-300">
+                      <span className={`font-medium ${isMe ? 'text-emerald-400' : 'text-white'}`}>
+                        {ev.teamName}
+                      </span>
+                      {' '}
+                      {ev.type === 'draft' ? 'drafted' : 'picked up'}
+                      {' '}
+                      <span className="font-mono font-semibold text-emerald-400">{ev.symbol}</span>
+                      {' '}
+                      <span className="text-slate-500">({ev.companyName})</span>
+                    </p>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {ev.detail}
+                      {ev.timestamp && (
+                        <>
+                          {' · '}
+                          {new Date(ev.timestamp).toLocaleDateString(undefined, {
+                            month: 'short',
+                            day: 'numeric',
+                          })}
+                        </>
+                      )}
+                    </p>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          {activity.length > 10 && (
+            <div className="px-5 py-2.5 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowAllActivity((v) => !v)}
+                className="text-xs font-medium text-slate-400 hover:text-emerald-400 transition-colors"
+              >
+                {showAllActivity ? 'Show less' : `Show all ${activity.length} events`}
+              </button>
+            </div>
+          )}
         </section>
       )}
     </div>

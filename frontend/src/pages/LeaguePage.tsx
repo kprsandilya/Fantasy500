@@ -184,7 +184,7 @@ export function LeaguePage() {
       {/* Tab content */}
       <div className="pt-4">
         {activeTab === 'league' && (
-          <LeagueTab league={league} teams={teams} myTeam={myTeam} walletRef={walletRef} scores={scores} />
+          <LeagueTab league={league} teams={teams} myTeam={myTeam} walletRef={walletRef} scores={scores} draft={draft} />
         )}
         {activeTab === 'roster' && (
           <RosterTab id={id} token={token} teams={teams} myTeam={myTeam} walletRef={walletRef} league={league} patchTeam={patchTeam} />

@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
+  getStockAlerts,
   getUniverse,
   oidString,
   setLineup,
   submitWaiver,
   type League,
   type RosterEntry,
+  type StockAlert,
   type Team,
 } from '../../api'
 import { companyName } from '../../stockNames'
@@ -60,11 +62,22 @@ export function RosterTab({
 
   const emptyStarterSlots = Math.max(0, rosterSize - starters.length)
 
+  const [alerts, setAlerts] = useState<StockAlert[]>([])
+  const [alertsLoaded, setAlertsLoaded] = useState(false)
+
   useEffect(() => {
     getUniverse()
       .then((u) => setUniverse(u.symbols))
       .catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (!id) return
+    setAlertsLoaded(false)
+    getStockAlerts(id)
+      .then((a) => { setAlerts(a); setAlertsLoaded(true) })
+      .catch(() => setAlertsLoaded(true))
+  }, [id])
 
   const allRosteredSymbols = useMemo(() => {
     const set = new Set<string>()
@@ -211,6 +224,27 @@ export function RosterTab({
     },
     [token, id, patchTeam],
   )
+
+  const alertsBySymbol = useMemo(() => {
+    const map = new Map<string, StockAlert[]>()
+    for (const a of alerts) {
+      const key = a.symbol.toUpperCase()
+      const arr = map.get(key) ?? []
+      arr.push(a)
+      map.set(key, arr)
+    }
+    return map
+  }, [alerts])
+
+  const teamAlerts = useMemo(() => {
+    if (!viewTeam) return []
+    return viewTeam.roster.flatMap((r) =>
+      (alertsBySymbol.get(r.symbol.toUpperCase()) ?? []).map((a) => ({
+        ...a,
+        slot: r.slot,
+      })),
+    )
+  }, [viewTeam, alertsBySymbol])
 
   /** One pick per snake round; starters + bench = snake_rounds. */
   const totalRosterSlots = league?.settings?.snake_rounds ?? 10
@@ -515,6 +549,61 @@ export function RosterTab({
           </div>
         </section>
       )}
+
+      {/* Stock news alerts */}
+      <section className="rounded-xl border border-slate-800 bg-slate-900/40 overflow-hidden">
+        <div className="px-4 py-3 border-b border-slate-800 flex items-center gap-2">
+          <svg className="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+          </svg>
+          <div>
+            <h2 className="text-sm font-semibold text-white uppercase tracking-wider">Stock News Alerts</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Upcoming events for {viewTeam?.name ?? 'this team'}&apos;s roster</p>
+          </div>
+        </div>
+        {teamAlerts.length > 0 ? (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-[0.65rem] uppercase tracking-wider text-slate-500">
+                <th className="text-left px-4 py-2 font-semibold">Type</th>
+                <th className="text-left px-4 py-2 font-semibold">Ticker</th>
+                <th className="text-left px-4 py-2 font-semibold">Alert</th>
+                <th className="text-right px-4 py-2 font-semibold">Date</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/50">
+              {teamAlerts.map((a, i) => (
+                <tr key={`${a.symbol}-${a.alert_type}-${i}`} className="hover:bg-slate-800/30 transition-colors">
+                  <td className="px-4 py-2.5">
+                    <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[0.6rem] font-bold uppercase tracking-wider ${
+                      a.alert_type === 'earnings'
+                        ? 'bg-violet-900/40 text-violet-400'
+                        : a.alert_type === 'dividend'
+                          ? 'bg-emerald-900/40 text-emerald-400'
+                          : a.alert_type === '52w_high'
+                            ? 'bg-green-900/40 text-green-400'
+                            : 'bg-red-900/40 text-red-400'
+                    }`}>
+                      {a.alert_type === 'earnings' ? 'Earnings' :
+                       a.alert_type === 'dividend' ? 'Dividend' :
+                       a.alert_type === '52w_high' ? '52W High' : '52W Low'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <span className="font-mono font-semibold text-emerald-400">{a.symbol}</span>
+                  </td>
+                  <td className="px-4 py-2.5 text-slate-300">{a.headline}</td>
+                  <td className="px-4 py-2.5 text-right text-slate-500">{a.date ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <div className="px-4 py-6 text-center text-sm text-slate-500">
+            {!alertsLoaded ? 'Loading alerts…' : 'No active alerts for this roster right now.'}
+          </div>
+        )}
+      </section>
     </div>
   )
 }
