@@ -1,0 +1,64 @@
+services:
+  # ── MongoDB ──
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Rust API server ──
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["server"]
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DB: ${MONGO_DB:-fantasy500}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in your environment}
+      BIND_ADDR: 0.0.0.0:8080
+      PROGRAM_ID: ${PROGRAM_ID:-Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS}
+      RPC_URL: ${RPC_URL:-https://api.devnet.solana.com}
+      RUST_LOG: ${RUST_LOG:-info}
+
+  # ── Background worker (scoring / ingestion) ──
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["worker"]
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DB: ${MONGO_DB:-fantasy500}
+      RUST_LOG: ${RUST_LOG:-info}
+
+  # ── Frontend (nginx + static SPA) ──
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_SOLANA_RPC: ${VITE_SOLANA_RPC:-}
+        VITE_API_BASE: ${VITE_API_BASE:-}
+        VITE_WS_BASE: ${VITE_WS_BASE:-}
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:80"
+    depends_on:
+      - server
+
+volumes:
+  mongo_data:
