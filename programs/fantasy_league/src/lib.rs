@@ -8,7 +8,7 @@ use anchor_lang::prelude::*;
 use anchor_lang::solana_program::program::invoke;
 use anchor_lang::solana_program::system_instruction;
 
-declare_id!("HkZRTjyhTBERS5Q7WVQd2ruFscaB5ZAbLyt9USG6XAcb");
+declare_id!("GVzcRC2a6iHReZbiED5RNJ3R1geCK7hn2gBiA3rEKtwN");
 
 #[program]
 pub mod fantasy_league {

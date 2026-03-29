@@ -3,10 +3,10 @@ seeds = false
 skip-lint = false
 
 [programs.localnet]
-fantasy_league = "HkZRTjyhTBERS5Q7WVQd2ruFscaB5ZAbLyt9USG6XAcb"
+fantasy_league = "GVzcRC2a6iHReZbiED5RNJ3R1geCK7hn2gBiA3rEKtwN"
 
 [programs.devnet]
-fantasy_league = "HkZRTjyhTBERS5Q7WVQd2ruFscaB5ZAbLyt9USG6XAcb"
+fantasy_league = "GVzcRC2a6iHReZbiED5RNJ3R1geCK7hn2gBiA3rEKtwN"
 
 [registry]
 url = "https://api.apr.dev"
