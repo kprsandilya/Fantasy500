@@ -110,8 +110,19 @@ export function leagueIdString(l: League): string | undefined {
   return oidString(l._id)
 }
 
-export async function listLeagues(token: string | null) {
-  return apiFetch<League[]>('/api/leagues', { token })
+export async function listLeagues(
+  token: string | null,
+  filters?: { status?: string; name?: string },
+) {
+  const params = new URLSearchParams()
+  if (filters?.status) params.set('status', filters.status)
+  if (filters?.name) params.set('name', filters.name)
+  const qs = params.toString()
+  return apiFetch<League[]>(`/api/leagues${qs ? `?${qs}` : ''}`, { token })
+}
+
+export async function listMyLeagues(token: string) {
+  return apiFetch<League[]>('/api/my-leagues', { token })
 }
 
 export async function getLeague(id: string, token?: string | null) {

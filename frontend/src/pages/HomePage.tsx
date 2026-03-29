@@ -6,6 +6,7 @@ import {
   getQuotes,
   leagueIdString,
   listLeagues,
+  listMyLeagues,
   type League,
   type QuoteItem,
 } from '../api'
@@ -108,9 +109,69 @@ const STEPS = [
   },
 ]
 
+function LeagueCard({ league }: { league: League }) {
+  const id = leagueIdString(league)
+  const isBuyIn = !!league.buy_in_lamports
+  return (
+    <Link
+      to={id ? `/league/${id}` : '#'}
+      className="group relative rounded-2xl border border-slate-800 bg-slate-900/40 p-5 hover:border-emerald-800/50 hover:bg-slate-900/60 transition-all duration-300 overflow-hidden"
+    >
+      <div className="absolute inset-0 bg-gradient-to-br from-emerald-600/[0.03] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+      <div className="relative">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="font-bold text-white truncate group-hover:text-emerald-400 transition-colors">
+              {league.name}
+            </h3>
+            <div className="flex items-center gap-2 mt-1.5">
+              <span className="text-xs text-slate-500">{league.team_count} teams</span>
+              <span className="h-1 w-1 rounded-full bg-slate-700" />
+              <span className="text-xs text-slate-500">{league.season_year}</span>
+              {isBuyIn && (
+                <>
+                  <span className="h-1 w-1 rounded-full bg-slate-700" />
+                  <span className="text-xs font-medium text-emerald-500/80">
+                    {(league.buy_in_lamports! / 1_000_000_000).toFixed(2)} SOL
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
+          <span
+            className={`inline-flex items-center gap-1.5 shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ring-inset ${
+              STATUS_STYLE[league.status] ?? STATUS_STYLE.completed
+            }`}
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-current" />
+            {league.status}
+          </span>
+        </div>
+        <div className="mt-4 flex items-center text-xs font-medium text-slate-500 group-hover:text-emerald-400/80 transition-colors">
+          <span>Open league</span>
+          <svg className="ml-1 h-3.5 w-3.5 transition-transform duration-200 group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
+          </svg>
+        </div>
+      </div>
+    </Link>
+  )
+}
+
+const STATUS_OPTIONS = ['all', 'forming', 'drafting', 'active', 'completed'] as const
+
 export function HomePage() {
   const { token } = useAuth()
-  const [leagues, setLeagues] = useState<League[]>([])
+
+  const [myLeagues, setMyLeagues] = useState<League[]>([])
+  const [myLoading, setMyLoading] = useState(false)
+
+  const [allLeagues, setAllLeagues] = useState<League[]>([])
+  const [allLoading, setAllLoading] = useState(false)
+  const [searchName, setSearchName] = useState('')
+  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [debouncedName, setDebouncedName] = useState('')
+
   const [name, setName] = useState('Wall Street West')
   const [teams, setTeams] = useState(4)
   const [buyIn, setBuyIn] = useState('')
@@ -119,10 +180,32 @@ export function HomePage() {
   const [showForm, setShowForm] = useState(false)
 
   useEffect(() => {
-    listLeagues(token)
-      .then(setLeagues)
-      .catch(() => setLeagues([]))
+    const t = setTimeout(() => setDebouncedName(searchName), 300)
+    return () => clearTimeout(t)
+  }, [searchName])
+
+  useEffect(() => {
+    if (!token) {
+      setMyLeagues([])
+      return
+    }
+    setMyLoading(true)
+    listMyLeagues(token)
+      .then(setMyLeagues)
+      .catch(() => setMyLeagues([]))
+      .finally(() => setMyLoading(false))
   }, [token])
+
+  useEffect(() => {
+    setAllLoading(true)
+    const filters: { status?: string; name?: string } = {}
+    if (statusFilter !== 'all') filters.status = statusFilter
+    if (debouncedName.trim()) filters.name = debouncedName.trim()
+    listLeagues(token, filters)
+      .then(setAllLeagues)
+      .catch(() => setAllLeagues([]))
+      .finally(() => setAllLoading(false))
+  }, [token, statusFilter, debouncedName])
 
   async function onCreate(e: FormEvent) {
     e.preventDefault()
@@ -138,7 +221,8 @@ export function HomePage() {
             ? undefined
             : Math.round(Number(buyIn) * 1_000_000_000),
       })
-      setLeagues((prev) => [l, ...prev])
+      setMyLeagues((prev) => [l, ...prev])
+      setAllLeagues((prev) => [l, ...prev])
       setShowForm(false)
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : 'failed')
@@ -210,143 +294,165 @@ export function HomePage() {
         </div>
       </section>
 
-      {/* ── Leagues ── */}
-      <section className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <h2 className="text-xl font-bold text-white">Your Leagues</h2>
-            {leagues.length > 0 && (
-              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-slate-800 px-1.5 text-[11px] font-semibold text-slate-400">
-                {leagues.length}
-              </span>
+      {/* ── Your Leagues ── */}
+      {token && (
+        <section className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <h2 className="text-xl font-bold text-white">Your Leagues</h2>
+              {myLeagues.length > 0 && (
+                <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-slate-800 px-1.5 text-[11px] font-semibold text-slate-400">
+                  {myLeagues.length}
+                </span>
+              )}
+            </div>
+            {!showForm && (
+              <button
+                type="button"
+                onClick={() => setShowForm(true)}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 shadow-md shadow-emerald-900/20 hover:shadow-emerald-900/40 transition-all hover:scale-[1.02]"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+                New League
+              </button>
             )}
           </div>
-          {token && !showForm && (
-            <button
-              type="button"
-              onClick={() => setShowForm(true)}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 shadow-md shadow-emerald-900/20 hover:shadow-emerald-900/40 transition-all hover:scale-[1.02]"
-            >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-              </svg>
-              New League
-            </button>
+
+          {/* Create league form */}
+          {showForm && (
+            <div className="rounded-2xl border border-emerald-700/30 bg-gradient-to-b from-emerald-950/20 to-transparent p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-white">Create a league</h3>
+                <button
+                  type="button"
+                  onClick={() => { setShowForm(false); setErr(null) }}
+                  className="rounded-lg px-2.5 py-1 text-xs text-slate-500 hover:text-slate-300 hover:bg-slate-800/60 transition-all"
+                >
+                  Cancel
+                </button>
+              </div>
+              <form className="grid gap-3 sm:grid-cols-3" onSubmit={onCreate}>
+                <label className="space-y-1.5 text-sm sm:col-span-1">
+                  <span className="block text-xs font-medium text-slate-400">League name</span>
+                  <div className="rounded-xl border border-slate-700/50 bg-gradient-to-b from-slate-900/95 to-slate-950/95 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] transition-all focus-within:border-emerald-500/45 focus-within:shadow-[0_0_0_3px_rgba(16,185,129,0.14)] hover:border-slate-600/60">
+                    <input
+                      className="w-full rounded-xl border-0 bg-transparent px-3 py-2.5 text-sm text-white placeholder:text-slate-600 focus:ring-0 focus:outline-none"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="e.g. Wall Street West"
+                    />
+                  </div>
+                </label>
+                <NumberFieldInt
+                  label="Teams"
+                  value={teams}
+                  onChange={setTeams}
+                  min={2}
+                  max={32}
+                  emptyFallback={4}
+                />
+                <NumberFieldSol label="Buy-in" value={buyIn} onChange={setBuyIn} placeholder="Free" />
+                {err && <p className="text-sm text-red-400 sm:col-span-3">{err}</p>}
+                <div className="sm:col-span-3 pt-1">
+                  <button
+                    type="submit"
+                    disabled={creating}
+                    className="rounded-xl bg-emerald-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500 shadow-md shadow-emerald-900/20 transition-all disabled:opacity-50"
+                  >
+                    {creating ? 'Creating...' : 'Create league'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {myLoading ? (
+            <div className="py-10 text-center">
+              <div className="mx-auto h-6 w-6 animate-spin rounded-full border-2 border-slate-700 border-t-emerald-500" />
+            </div>
+          ) : myLeagues.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-800/80 py-14 text-center">
+              <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-slate-800/40 ring-1 ring-slate-700/40">
+                <svg className="h-5 w-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+              </div>
+              <p className="text-sm text-slate-500">You haven't joined any leagues yet</p>
+              <p className="text-xs text-slate-600 mt-1">Create one above or explore leagues below</p>
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {myLeagues.map((l) => (
+                <LeagueCard key={leagueIdString(l) ?? l.name} league={l} />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* ── Explore Leagues ── */}
+      <section className="space-y-4">
+        <div className="flex items-center gap-3">
+          <h2 className="text-xl font-bold text-white">Explore Leagues</h2>
+          {allLeagues.length > 0 && !allLoading && (
+            <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-slate-800 px-1.5 text-[11px] font-semibold text-slate-400">
+              {allLeagues.length}
+            </span>
           )}
         </div>
 
-        {/* Create league form */}
-        {token && showForm && (
-          <div className="rounded-2xl border border-emerald-700/30 bg-gradient-to-b from-emerald-950/20 to-transparent p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-white">Create a league</h3>
-              <button
-                type="button"
-                onClick={() => { setShowForm(false); setErr(null) }}
-                className="rounded-lg px-2.5 py-1 text-xs text-slate-500 hover:text-slate-300 hover:bg-slate-800/60 transition-all"
-              >
-                Cancel
-              </button>
-            </div>
-            <form className="grid gap-3 sm:grid-cols-3" onSubmit={onCreate}>
-              <label className="space-y-1.5 text-sm sm:col-span-1">
-                <span className="block text-xs font-medium text-slate-400">League name</span>
-                <div className="rounded-xl border border-slate-700/50 bg-gradient-to-b from-slate-900/95 to-slate-950/95 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] transition-all focus-within:border-emerald-500/45 focus-within:shadow-[0_0_0_3px_rgba(16,185,129,0.14)] hover:border-slate-600/60">
-                  <input
-                    className="w-full rounded-xl border-0 bg-transparent px-3 py-2.5 text-sm text-white placeholder:text-slate-600 focus:ring-0 focus:outline-none"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="e.g. Wall Street West"
-                  />
-                </div>
-              </label>
-              <NumberFieldInt
-                label="Teams"
-                value={teams}
-                onChange={setTeams}
-                min={2}
-                max={32}
-                emptyFallback={4}
-              />
-              <NumberFieldSol label="Buy-in" value={buyIn} onChange={setBuyIn} placeholder="Free" />
-              {err && <p className="text-sm text-red-400 sm:col-span-3">{err}</p>}
-              <div className="sm:col-span-3 pt-1">
-                <button
-                  type="submit"
-                  disabled={creating}
-                  className="rounded-xl bg-emerald-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500 shadow-md shadow-emerald-900/20 transition-all disabled:opacity-50"
-                >
-                  {creating ? 'Creating…' : 'Create league'}
-                </button>
-              </div>
-            </form>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <svg className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+            </svg>
+            <input
+              className="w-full rounded-xl border border-slate-700/50 bg-slate-900/80 py-2.5 pl-10 pr-3 text-sm text-white placeholder:text-slate-600 focus:border-emerald-500/45 focus:ring-0 focus:outline-none transition-colors"
+              placeholder="Search by name..."
+              value={searchName}
+              onChange={(e) => setSearchName(e.target.value)}
+            />
           </div>
-        )}
+          <div className="flex gap-1.5 flex-wrap">
+            {STATUS_OPTIONS.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setStatusFilter(s)}
+                className={`rounded-lg px-3 py-2 text-xs font-semibold capitalize transition-all ${
+                  statusFilter === s
+                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/30'
+                    : 'bg-slate-800/60 text-slate-400 hover:bg-slate-800 hover:text-slate-300'
+                }`}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        </div>
 
-        {/* League cards */}
-        {leagues.length === 0 ? (
+        {allLoading ? (
+          <div className="py-10 text-center">
+            <div className="mx-auto h-6 w-6 animate-spin rounded-full border-2 border-slate-700 border-t-emerald-500" />
+          </div>
+        ) : allLeagues.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-800/80 py-14 text-center">
-            <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-slate-800/40 ring-1 ring-slate-700/40">
-              <svg className="h-5 w-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-              </svg>
-            </div>
-            <p className="text-sm text-slate-500">No leagues yet</p>
+            <p className="text-sm text-slate-500">No leagues found</p>
             <p className="text-xs text-slate-600 mt-1">
-              {token ? 'Create your first league above' : 'Connect your wallet to create one'}
+              {searchName || statusFilter !== 'all'
+                ? 'Try adjusting your filters'
+                : token
+                  ? 'Create the first league above'
+                  : 'Connect your wallet to create one'}
             </p>
           </div>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
-            {leagues.map((l) => {
-              const id = leagueIdString(l)
-              const isBuyIn = !!l.buy_in_lamports
-              return (
-                <Link
-                  key={id ?? l.name}
-                  to={id ? `/league/${id}` : '#'}
-                  className="group relative rounded-2xl border border-slate-800 bg-slate-900/40 p-5 hover:border-emerald-800/50 hover:bg-slate-900/60 transition-all duration-300 overflow-hidden"
-                >
-                  <div className="absolute inset-0 bg-gradient-to-br from-emerald-600/[0.03] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                  <div className="relative">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <h3 className="font-bold text-white truncate group-hover:text-emerald-400 transition-colors">
-                          {l.name}
-                        </h3>
-                        <div className="flex items-center gap-2 mt-1.5">
-                          <span className="text-xs text-slate-500">{l.team_count} teams</span>
-                          <span className="h-1 w-1 rounded-full bg-slate-700" />
-                          <span className="text-xs text-slate-500">{l.season_year}</span>
-                          {isBuyIn && (
-                            <>
-                              <span className="h-1 w-1 rounded-full bg-slate-700" />
-                              <span className="text-xs font-medium text-emerald-500/80">
-                                {(l.buy_in_lamports! / 1_000_000_000).toFixed(2)} SOL
-                              </span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                      <span
-                        className={`inline-flex items-center gap-1.5 shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ring-inset ${
-                          STATUS_STYLE[l.status] ?? STATUS_STYLE.completed
-                        }`}
-                      >
-                        <span className="h-1.5 w-1.5 rounded-full bg-current" />
-                        {l.status}
-                      </span>
-                    </div>
-                    <div className="mt-4 flex items-center text-xs font-medium text-slate-500 group-hover:text-emerald-400/80 transition-colors">
-                      <span>Open league</span>
-                      <svg className="ml-1 h-3.5 w-3.5 transition-transform duration-200 group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
-                      </svg>
-                    </div>
-                  </div>
-                </Link>
-              )
-            })}
+            {allLeagues.map((l) => (
+              <LeagueCard key={leagueIdString(l) ?? l.name} league={l} />
+            ))}
           </div>
         )}
       </section>

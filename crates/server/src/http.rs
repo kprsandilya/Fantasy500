@@ -229,6 +229,7 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/api/universe", get(universe))
         .route("/api/quotes", get(live_quotes))
         .route("/api/leagues", get(list_leagues).post(create_league))
+        .route("/api/my-leagues", get(my_leagues))
         .route(
             "/api/leagues/:id",
             get(get_league).patch(update_league).delete(delete_league),
@@ -320,14 +321,74 @@ async fn live_quotes(
     Ok(Json(items))
 }
 
-async fn list_leagues(State(state): State<Arc<AppState>>) -> AppResult<Json<Vec<League>>> {
+#[derive(Deserialize)]
+struct LeaguesQuery {
+    status: Option<String>,
+    name: Option<String>,
+}
+
+async fn list_leagues(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<LeaguesQuery>,
+) -> AppResult<Json<Vec<League>>> {
     let col = state.db.collection::<League>("leagues");
+    let mut filter = mongodb::bson::Document::new();
+    if let Some(ref status) = q.status {
+        filter.insert("status", status.as_str());
+    }
+    if let Some(ref name) = q.name {
+        filter.insert(
+            "name",
+            mongodb::bson::doc! { "$regex": name.as_str(), "$options": "i" },
+        );
+    }
     let mut cur = col
-        .find(mongodb::bson::doc! {})
+        .find(filter)
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
     let mut out = Vec::new();
     while let Some(doc) = cur
+        .try_next()
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+    {
+        out.push(doc);
+    }
+    Ok(Json(out))
+}
+
+async fn my_leagues(
+    State(state): State<Arc<AppState>>,
+    AuthWallet(wallet): AuthWallet,
+) -> AppResult<Json<Vec<League>>> {
+    let teams_col = state.db.collection::<Team>("teams");
+    let mut cur = teams_col
+        .find(mongodb::bson::doc! { "owner_wallet": &wallet })
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let mut league_ids: Vec<ObjectId> = Vec::new();
+    while let Some(t) = cur
+        .try_next()
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+    {
+        if !league_ids.contains(&t.league_id) {
+            league_ids.push(t.league_id);
+        }
+    }
+
+    let leagues_col = state.db.collection::<League>("leagues");
+    let mut lcur = leagues_col
+        .find(mongodb::bson::doc! {
+            "$or": [
+                { "_id": { "$in": &league_ids } },
+                { "commissioner_wallet": &wallet }
+            ]
+        })
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let mut out = Vec::new();
+    while let Some(doc) = lcur
         .try_next()
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?

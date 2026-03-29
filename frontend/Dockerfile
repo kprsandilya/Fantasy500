@@ -3,7 +3,7 @@ FROM node:20-alpine AS builder
 
 RUN apk add --no-cache python3 make g++ libusb-dev linux-headers eudev-dev
 
-RUN corepack enable && corepack prepare pnpm@8 --activate
+RUN corepack enable && corepack prepare pnpm@9 --activate
 
 WORKDIR /app
 COPY package.json pnpm-lock.yaml ./
