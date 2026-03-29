@@ -11,9 +11,11 @@ pub mod scoring;
 pub mod user;
 pub mod waiver;
 pub mod ws;
+pub mod commissioner_report;
 
 pub use dotenv::load_dotenv;
 pub use auth::{AuthClaims, WalletAuthPayload};
+pub use commissioner_report::{CommissionerReport, PlayerFeedback};
 pub use draft::{DraftDirection, DraftPick, DraftSession, DraftStatus};
 pub use join_request::{JoinRequest, JoinRequestStatus};
 pub use league::{League, LeagueSettings, LeagueStatus};

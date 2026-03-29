@@ -288,3 +288,66 @@ export type ScoresResponse = {
 export async function getScores(leagueId: string) {
   return apiFetch<ScoresResponse>(`/api/leagues/${leagueId}/scores`)
 }
+
+// ─── Commissioner Report ───────────────────────────────────────────────
+
+export type PlayerFeedback = {
+  owner_wallet: string
+  team_name: string
+  commissioner_comment?: string | null
+  ai_feedback?: string | null
+}
+
+export type CommissionerReport = {
+  _id?: string | { $oid: string }
+  league_id: string | { $oid: string }
+  week_start: string
+  overall_comment?: string | null
+  player_feedback: PlayerFeedback[]
+  ai_summary?: string | null
+  updated_at?: number | null
+}
+
+export type CommissionerReportResponse = {
+  report: CommissionerReport | null
+  available_weeks: string[]
+}
+
+export async function getCommissionerReport(
+  leagueId: string,
+  token?: string | null,
+  week?: string,
+) {
+  const params = week ? `?week=${encodeURIComponent(week)}` : ''
+  return apiFetch<CommissionerReportResponse>(
+    `/api/leagues/${leagueId}/commissioner-report${params}`,
+    { token },
+  )
+}
+
+export async function saveCommissionerReport(
+  token: string,
+  leagueId: string,
+  body: {
+    overall_comment?: string | null
+    player_feedback?: PlayerFeedback[]
+  },
+  week?: string,
+) {
+  const params = week ? `?week=${encodeURIComponent(week)}` : ''
+  return apiFetch<CommissionerReport>(
+    `/api/leagues/${leagueId}/commissioner-report${params}`,
+    { method: 'POST', token, body: JSON.stringify(body) },
+  )
+}
+
+export async function generateCommissionerReport(
+  token: string,
+  leagueId: string,
+  week?: string,
+) {
+  return apiFetch<CommissionerReport>(
+    `/api/leagues/${leagueId}/commissioner-report/generate`,
+    { method: 'POST', token, body: JSON.stringify({ week: week ?? null }) },
+  )
+}

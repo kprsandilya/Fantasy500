@@ -28,6 +28,7 @@ services:
       BIND_ADDR: 0.0.0.0:8080
       PROGRAM_ID: ${PROGRAM_ID:-Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS}
       RPC_URL: ${RPC_URL:-https://api.devnet.solana.com}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       RUST_LOG: ${RUST_LOG:-info}
 
   # ── Background worker (scoring / ingestion) ──
