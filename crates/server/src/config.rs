@@ -18,7 +18,7 @@ impl Config {
             db_name: env::var("MONGO_DB").unwrap_or_else(|_| "fantasy500".into()),
             jwt_secret: env::var("JWT_SECRET").unwrap_or_else(|_| "dev-secret-change-me".into()),
             host: env::var("BIND_ADDR").unwrap_or_else(|_| "127.0.0.1:8080".into()),
-            program_id: env::var("PROGRAM_ID").unwrap_or_else(|_| "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS".into()),
+            program_id: env::var("PROGRAM_ID").unwrap_or_else(|_| "HkZRTjyhTBERS5Q7WVQd2ruFscaB5ZAbLyt9USG6XAcb".into()),
             rpc_url: env::var("RPC_URL").unwrap_or_else(|_| "https://api.devnet.solana.com".into()),
             gemini_api_key: env::var("GEMINI_API_KEY").ok(),
         }

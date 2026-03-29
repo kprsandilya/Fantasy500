@@ -1,0 +1,1 @@
+\\?\C:\Users\kprsa\Documents\CodingProjects\Fantasy500\programs\fantasy_league\target\sbpf-solana-solana\release\libfantasy_league.rlib: \\?\C:\Users\kprsa\Documents\CodingProjects\Fantasy500\programs\fantasy_league\src\lib.rs

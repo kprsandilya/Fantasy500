@@ -1,0 +1,10 @@
+\\?\C:\Users\kprsa\Documents\CodingProjects\Fantasy500\programs\fantasy_league\target\sbpf-solana-solana\release\deps\thiserror-54d34e257d8f5278.d: C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-1.0.69\src\lib.rs C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-1.0.69\src\aserror.rs C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-1.0.69\src\display.rs C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-1.0.69\src\provide.rs
+
+\\?\C:\Users\kprsa\Documents\CodingProjects\Fantasy500\programs\fantasy_league\target\sbpf-solana-solana\release\deps\libthiserror-54d34e257d8f5278.rlib: C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-1.0.69\src\lib.rs C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-1.0.69\src\aserror.rs C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-1.0.69\src\display.rs C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-1.0.69\src\provide.rs
+
+\\?\C:\Users\kprsa\Documents\CodingProjects\Fantasy500\programs\fantasy_league\target\sbpf-solana-solana\release\deps\libthiserror-54d34e257d8f5278.rmeta: C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-1.0.69\src\lib.rs C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-1.0.69\src\aserror.rs C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-1.0.69\src\display.rs C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-1.0.69\src\provide.rs
+
+C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-1.0.69\src\lib.rs:
+C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-1.0.69\src\aserror.rs:
+C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-1.0.69\src\display.rs:
+C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\thiserror-1.0.69\src\provide.rs:
