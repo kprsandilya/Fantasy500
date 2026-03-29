@@ -23,5 +23,15 @@ pub async fn ensure_indexes(db: &Database) -> anyhow::Result<()> {
         )
         .await?;
 
+    let reports = db.collection::<shared::CommissionerReport>("commissioner_reports");
+    reports
+        .create_index(
+            IndexModel::builder()
+                .keys(mongodb::bson::doc! { "league_id": 1, "week_start": 1 })
+                .options(IndexOptions::builder().unique(true).build())
+                .build(),
+        )
+        .await?;
+
     Ok(())
 }

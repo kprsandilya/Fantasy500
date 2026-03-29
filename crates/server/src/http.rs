@@ -16,9 +16,10 @@ use serde_json::json;
 use tower_http::cors::{Any, CorsLayer};
 
 use shared::{
-    DraftDirection, DraftPick, DraftSession, DraftStatus, JoinRequest, JoinRequestStatus,
-    League, LeagueSettings, LeagueStatus, PlayerWeeklyScore, RosterEntry, RosterSlot, Team,
-    User, WalletAuthPayload, WaiverClaim, WeeklyScoreboard, WsServerMessage,
+    CommissionerReport, DraftDirection, DraftPick, DraftSession, DraftStatus, JoinRequest,
+    JoinRequestStatus, League, LeagueSettings, LeagueStatus, PlayerFeedback, PlayerWeeklyScore,
+    RosterEntry, RosterSlot, Team, User, WalletAuthPayload, WaiverClaim, WeeklyScoreboard,
+    WsServerMessage,
 };
 
 use rand::seq::SliceRandom;
@@ -29,6 +30,7 @@ use crate::draft_logic::{direction_for_round_from_pick, next_clock_team};
 use crate::error::{AppError, AppResult};
 use crate::extract::{require_commissioner, AuthWallet};
 use crate::fortune500;
+use crate::gemini;
 use crate::jwt;
 use crate::pick_commit;
 use crate::quotes;
@@ -243,6 +245,14 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/api/leagues/:id/roster/set-lineup", post(set_lineup))
         .route("/api/leagues/:id/waivers", post(submit_waiver))
         .route("/api/leagues/:id/scores", get(get_scores))
+        .route(
+            "/api/leagues/:id/commissioner-report",
+            get(get_commissioner_report).post(save_commissioner_report),
+        )
+        .route(
+            "/api/leagues/:id/commissioner-report/generate",
+            post(generate_commissioner_report),
+        )
         .route("/api/chain/ix/init-league", get(chain_init_ix))
         .route("/api/chain/ix/record-pick", get(chain_record_pick_ix))
         .route("/api/chain/ix/deposit-buy-in", get(chain_deposit_ix))
@@ -1441,6 +1451,423 @@ async fn chain_deposit_ix(
 ) -> AppResult<Json<chain_tx::InstructionDraft>> {
     let ix = chain_tx::deposit_buy_in_instruction(&state.config)?;
     Ok(Json(ix))
+}
+
+// ─── Commissioner Report ───────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct ReportQuery {
+    week: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct SaveReportBody {
+    overall_comment: Option<String>,
+    player_feedback: Option<Vec<PlayerFeedback>>,
+}
+
+async fn get_commissioner_report(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    auth: Option<AuthWallet>,
+    Query(q): Query<ReportQuery>,
+) -> AppResult<Json<serde_json::Value>> {
+    let league_oid =
+        ObjectId::parse_str(&id).map_err(|_| AppError::BadRequest("bad id".into()))?;
+
+    let week = match q.week {
+        Some(w) => w,
+        None => {
+            let today = chrono::Utc::now().date_naive();
+            let iso = today.iso_week();
+            let monday =
+                chrono::NaiveDate::from_isoywd_opt(iso.year(), iso.week(), chrono::Weekday::Mon)
+                    .unwrap_or(today);
+            monday.format("%Y-%m-%d").to_string()
+        }
+    };
+
+    let col = state
+        .db
+        .collection::<CommissionerReport>("commissioner_reports");
+    let report = col
+        .find_one(bson::doc! { "league_id": league_oid, "week_start": &week })
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    let league = state
+        .db
+        .collection::<League>("leagues")
+        .find_one(bson::doc! { "_id": league_oid })
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+        .ok_or(AppError::NotFound)?;
+
+    let caller_wallet = auth.map(|a| a.0);
+    let is_commissioner = caller_wallet
+        .as_deref()
+        .map(|w| w == league.commissioner_wallet)
+        .unwrap_or(false);
+
+    let weeks_col = state.db.collection::<WeeklyScoreboard>("weekly_scores");
+    let mut wcur = weeks_col
+        .find(bson::doc! { "league_id": league_oid })
+        .sort(bson::doc! { "week_start": 1 })
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let mut available_weeks: Vec<String> = Vec::new();
+    while let Some(board) = wcur
+        .try_next()
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+    {
+        if !available_weeks.contains(&board.week_start) {
+            available_weeks.push(board.week_start);
+        }
+    }
+
+    match report {
+        Some(mut r) => {
+            if !is_commissioner {
+                // Non-commissioners only see their own player feedback
+                r.player_feedback = r
+                    .player_feedback
+                    .into_iter()
+                    .filter(|f| caller_wallet.as_deref() == Some(&f.owner_wallet))
+                    .collect();
+            }
+            Ok(Json(json!({
+                "report": r,
+                "available_weeks": available_weeks,
+            })))
+        }
+        None => Ok(Json(json!({
+            "report": null,
+            "available_weeks": available_weeks,
+        }))),
+    }
+}
+
+async fn save_commissioner_report(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    AuthWallet(wallet): AuthWallet,
+    Query(q): Query<ReportQuery>,
+    Json(body): Json<SaveReportBody>,
+) -> AppResult<Json<CommissionerReport>> {
+    let league_oid =
+        ObjectId::parse_str(&id).map_err(|_| AppError::BadRequest("bad id".into()))?;
+
+    let league = state
+        .db
+        .collection::<League>("leagues")
+        .find_one(bson::doc! { "_id": league_oid })
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+        .ok_or(AppError::NotFound)?;
+
+    require_commissioner(&wallet, &league.commissioner_wallet)?;
+
+    let week = match q.week {
+        Some(w) => w,
+        None => {
+            let today = chrono::Utc::now().date_naive();
+            let iso = today.iso_week();
+            let monday =
+                chrono::NaiveDate::from_isoywd_opt(iso.year(), iso.week(), chrono::Weekday::Mon)
+                    .unwrap_or(today);
+            monday.format("%Y-%m-%d").to_string()
+        }
+    };
+
+    let col = state
+        .db
+        .collection::<CommissionerReport>("commissioner_reports");
+    let existing = col
+        .find_one(bson::doc! { "league_id": league_oid, "week_start": &week })
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    let now = chrono::Utc::now();
+    let feedback = body.player_feedback.unwrap_or_default();
+
+    if let Some(mut doc) = existing {
+        let mut update = bson::doc! { "updated_at": bson::DateTime::from_chrono(now) };
+        if let Some(ref comment) = body.overall_comment {
+            update.insert("overall_comment", comment.clone());
+        }
+        let fb_bson =
+            bson::to_bson(&feedback).map_err(|e| AppError::Internal(e.to_string()))?;
+        update.insert("player_feedback", fb_bson);
+
+        col.update_one(
+            bson::doc! { "league_id": league_oid, "week_start": &week },
+            bson::doc! { "$set": update },
+        )
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+        doc.overall_comment = body.overall_comment.or(doc.overall_comment);
+        doc.player_feedback = feedback;
+        doc.updated_at = Some(now);
+        Ok(Json(doc))
+    } else {
+        let doc = CommissionerReport {
+            id: None,
+            league_id: league_oid,
+            week_start: week,
+            overall_comment: body.overall_comment,
+            player_feedback: feedback,
+            ai_summary: None,
+            updated_at: Some(now),
+        };
+        col.insert_one(&doc)
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+        Ok(Json(doc))
+    }
+}
+
+#[derive(Deserialize)]
+struct GenerateReportBody {
+    week: Option<String>,
+}
+
+async fn generate_commissioner_report(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    AuthWallet(wallet): AuthWallet,
+    Json(body): Json<GenerateReportBody>,
+) -> AppResult<Json<CommissionerReport>> {
+    let api_key = state
+        .config
+        .gemini_api_key
+        .as_deref()
+        .ok_or_else(|| AppError::BadRequest("GEMINI_API_KEY not configured".into()))?;
+
+    let league_oid =
+        ObjectId::parse_str(&id).map_err(|_| AppError::BadRequest("bad id".into()))?;
+
+    let league = state
+        .db
+        .collection::<League>("leagues")
+        .find_one(bson::doc! { "_id": league_oid })
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+        .ok_or(AppError::NotFound)?;
+
+    require_commissioner(&wallet, &league.commissioner_wallet)?;
+
+    let week = match body.week {
+        Some(w) => w,
+        None => {
+            let today = chrono::Utc::now().date_naive();
+            let iso = today.iso_week();
+            let monday =
+                chrono::NaiveDate::from_isoywd_opt(iso.year(), iso.week(), chrono::Weekday::Mon)
+                    .unwrap_or(today);
+            monday.format("%Y-%m-%d").to_string()
+        }
+    };
+
+    // Gather context: teams, scores, matchups
+    let teams_col = state.db.collection::<Team>("teams");
+    let mut tcur = teams_col
+        .find(bson::doc! { "league_id": league_oid })
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let mut teams: Vec<Team> = Vec::new();
+    while let Some(t) = tcur
+        .try_next()
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+    {
+        teams.push(t);
+    }
+
+    let weeks_col = state.db.collection::<WeeklyScoreboard>("weekly_scores");
+    let mut wcur = weeks_col
+        .find(bson::doc! { "league_id": league_oid })
+        .sort(bson::doc! { "week_start": 1 })
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let mut all_weeks: Vec<WeeklyScoreboard> = Vec::new();
+    while let Some(board) = wcur
+        .try_next()
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+    {
+        all_weeks.push(board);
+    }
+
+    let ps_col = state.db.collection::<PlayerWeeklyScore>("player_scores");
+    let team_ids: Vec<ObjectId> = teams.iter().filter_map(|t| t.id).collect();
+    let mut pcur = ps_col
+        .find(bson::doc! { "team_id": { "$in": &team_ids }, "week_start": &week })
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let mut week_player_scores: Vec<PlayerWeeklyScore> = Vec::new();
+    while let Some(ps) = pcur
+        .try_next()
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?
+    {
+        week_player_scores.push(ps);
+    }
+
+    // Load existing report for commissioner comments
+    let col = state
+        .db
+        .collection::<CommissionerReport>("commissioner_reports");
+    let existing = col
+        .find_one(bson::doc! { "league_id": league_oid, "week_start": &week })
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    // Build matchup pairs for the current week
+    let week_idx = all_weeks
+        .iter()
+        .position(|w| w.week_start == week)
+        .map(|i| i + 1)
+        .unwrap_or(1);
+    let pairs = round_robin_pairs(&teams, week_idx);
+
+    // Format the prompt
+    let mut prompt = String::from(
+        "You are the AI analyst for a Fantasy Stock Market league called \"Fantasy 500\" \
+         where players draft S&P 500 stocks instead of athletes. \
+         Generate a weekly Commissioner's Report.\n\n",
+    );
+
+    prompt.push_str(&format!("League: {}\nWeek: {}\n\n", league.name, week));
+
+    // Team standings
+    prompt.push_str("## Teams & Rosters\n");
+    for t in &teams {
+        prompt.push_str(&format!("- **{}** (owner: {}...)\n", t.name, &t.owner_wallet[..6]));
+        for r in &t.roster {
+            let slot_str = if r.slot == RosterSlot::Starter {
+                "starter"
+            } else {
+                "bench"
+            };
+            prompt.push_str(&format!("  - {} ({}) [{}]\n", r.symbol, r.company_name, slot_str));
+        }
+    }
+
+    // Weekly scores
+    if let Some(board) = all_weeks.iter().find(|w| w.week_start == week) {
+        prompt.push_str("\n## This Week's Scores\n");
+        for tt in &board.team_totals {
+            let name = teams
+                .iter()
+                .find(|t| t.id == Some(tt.team_id))
+                .map(|t| t.name.as_str())
+                .unwrap_or("?");
+            prompt.push_str(&format!("- {}: {:.2} pts\n", name, tt.points));
+        }
+    }
+
+    // Player-level scores for this week
+    if !week_player_scores.is_empty() {
+        prompt.push_str("\n## Individual Stock Performance This Week\n");
+        for ps in &week_player_scores {
+            let tname = teams
+                .iter()
+                .find(|t| t.id == Some(ps.team_id))
+                .map(|t| t.name.as_str())
+                .unwrap_or("?");
+            prompt.push_str(&format!(
+                "- {} ({}'s): {:.2}% → {:.2} pts\n",
+                ps.symbol, tname, ps.pct_change, ps.points
+            ));
+        }
+    }
+
+    // Matchups
+    prompt.push_str("\n## Matchups This Week\n");
+    for (a, b) in &pairs {
+        let a_name = a
+            .and_then(|id| teams.iter().find(|t| t.id == Some(id)))
+            .map(|t| t.name.as_str())
+            .unwrap_or("BYE");
+        let b_name = b
+            .and_then(|id| teams.iter().find(|t| t.id == Some(id)))
+            .map(|t| t.name.as_str())
+            .unwrap_or("BYE");
+        prompt.push_str(&format!("- {} vs {}\n", a_name, b_name));
+    }
+
+    // Season history
+    if all_weeks.len() > 1 {
+        prompt.push_str("\n## Previous Weeks Summary\n");
+        for board in &all_weeks {
+            if board.week_start == week {
+                continue;
+            }
+            prompt.push_str(&format!("Week {}:\n", board.week_start));
+            for tt in &board.team_totals {
+                let name = teams
+                    .iter()
+                    .find(|t| t.id == Some(tt.team_id))
+                    .map(|t| t.name.as_str())
+                    .unwrap_or("?");
+                prompt.push_str(&format!("  - {}: {:.2} pts\n", name, tt.points));
+            }
+        }
+    }
+
+    // Commissioner comments if available
+    if let Some(ref report) = existing {
+        if let Some(ref comment) = report.overall_comment {
+            prompt.push_str(&format!(
+                "\n## Commissioner's Notes\n{}\n",
+                comment
+            ));
+        }
+    }
+
+    prompt.push_str(
+        "\n---\n\
+         Write an engaging, analysis-driven weekly summary (2-4 paragraphs). \
+         Highlight notable stock performances, surprising results, close matchups, \
+         and strategic moves. Reference specific stocks and team names. \
+         Keep the tone conversational but informative, like a sports commentator covering Wall Street. \
+         Do NOT use markdown headers in your output — just flowing paragraphs.",
+    );
+
+    let ai_summary = gemini::generate_summary(api_key, &prompt).await?;
+
+    // Save the AI summary
+    let now = chrono::Utc::now();
+    if let Some(mut doc) = existing {
+        col.update_one(
+            bson::doc! { "league_id": league_oid, "week_start": &week },
+            bson::doc! { "$set": {
+                "ai_summary": &ai_summary,
+                "updated_at": bson::DateTime::from_chrono(now),
+            }},
+        )
+        .await
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+        doc.ai_summary = Some(ai_summary);
+        doc.updated_at = Some(now);
+        Ok(Json(doc))
+    } else {
+        let doc = CommissionerReport {
+            id: None,
+            league_id: league_oid,
+            week_start: week,
+            overall_comment: None,
+            player_feedback: Vec::new(),
+            ai_summary: Some(ai_summary),
+            updated_at: Some(now),
+        };
+        col.insert_one(&doc)
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+        Ok(Json(doc))
+    }
 }
 
 async fn ws_handler(

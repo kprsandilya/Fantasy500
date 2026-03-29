@@ -8,6 +8,7 @@ pub struct Config {
     pub host: String,
     pub program_id: String,
     pub rpc_url: String,
+    pub gemini_api_key: Option<String>,
 }
 
 impl Config {
@@ -19,6 +20,7 @@ impl Config {
             host: env::var("BIND_ADDR").unwrap_or_else(|_| "127.0.0.1:8080".into()),
             program_id: env::var("PROGRAM_ID").unwrap_or_else(|_| "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS".into()),
             rpc_url: env::var("RPC_URL").unwrap_or_else(|_| "https://api.devnet.solana.com".into()),
+            gemini_api_key: env::var("GEMINI_API_KEY").ok(),
         }
     }
 }

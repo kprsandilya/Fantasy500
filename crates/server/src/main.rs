@@ -15,6 +15,7 @@ mod draft_logic;
 mod error;
 mod extract;
 mod fortune500;
+mod gemini;
 mod http;
 mod jwt;
 mod pick_commit;
