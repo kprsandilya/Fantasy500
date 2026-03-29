@@ -2,6 +2,12 @@
 /target/
 **/*.rs.bk
 
+# Anchor program crate lives outside the workspace `target/`; ignore its build dir
+programs/**/target/
+
+# Never commit Solana deploy keypairs (each dev / CI uses their own)
+**/target/deploy/*-keypair.json
+
 # Node
 node_modules/
 dist/
