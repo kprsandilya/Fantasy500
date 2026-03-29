@@ -79,6 +79,12 @@ pub mod fantasy_league {
         **ctx.accounts.winner.to_account_info().try_borrow_mut_lamports()? += amount;
         Ok(())
     }
+
+    /// Closes the league PDA and sends all remaining lamports to the admin.
+    /// After this, the same commissioner may call `initialize_league` again (same PDA address, new account).
+    pub fn close_league(_ctx: Context<CloseLeague>) -> Result<()> {
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
@@ -128,6 +134,19 @@ pub struct DistributePayout<'info> {
     #[account(mut)]
     pub winner: AccountInfo<'info>,
     pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct CloseLeague<'info> {
+    #[account(mut)]
+    pub admin: Signer<'info>,
+    #[account(
+        mut,
+        seeds = [b"league", admin.key().as_ref()],
+        bump = league.bump,
+        close = admin,
+    )]
+    pub league: Account<'info, League>,
 }
 
 #[account]

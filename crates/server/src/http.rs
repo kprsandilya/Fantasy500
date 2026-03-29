@@ -259,6 +259,7 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/api/chain/ix/record-pick", get(chain_record_pick_ix))
         .route("/api/chain/ix/deposit-buy-in", get(chain_deposit_ix))
         .route("/api/chain/ix/distribute-payout", get(chain_payout_ix))
+        .route("/api/chain/ix/close-league", get(chain_close_ix))
         .route("/api/chain/config", get(chain_config))
         .route("/ws", get(ws_handler))
         .layer(
@@ -1559,6 +1560,13 @@ async fn chain_payout_ix(
     Query(q): Query<PayoutQuery>,
 ) -> AppResult<Json<chain_tx::InstructionDraft>> {
     let ix = chain_tx::distribute_payout_instruction(&state.config, q.amount)?;
+    Ok(Json(ix))
+}
+
+async fn chain_close_ix(
+    State(state): State<Arc<AppState>>,
+) -> AppResult<Json<chain_tx::InstructionDraft>> {
+    let ix = chain_tx::close_league_instruction(&state.config)?;
     Ok(Json(ix))
 }
 

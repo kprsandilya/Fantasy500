@@ -145,6 +145,16 @@ pub fn distribute_payout_instruction(
     })
 }
 
+pub fn close_league_instruction(cfg: &Config) -> AppResult<InstructionDraft> {
+    let bytes = encode_args("close_league", ())?;
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    Ok(InstructionDraft {
+        program_id: cfg.program_id.clone(),
+        instruction_name: "close_league".into(),
+        data_base64: STANDARD.encode(bytes),
+    })
+}
+
 /// League PDA address: seeds = [b"league", admin_pubkey].
 pub fn league_pda(cfg: &Config, admin: &str) -> AppResult<String> {
     let program = program_pubkey(cfg)?;

@@ -42,6 +42,8 @@ export function SolanaTab({
   const wallet = useWallet()
   const [cfg, setCfg] = useState<ChainConfig | null>(null)
   const [balance, setBalance] = useState<number | null>(null)
+  /** League PDA already created on-chain for this commissioner + program (seeds are fixed). */
+  const [escrowInitialized, setEscrowInitialized] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [txLog, setTxLog] = useState<TxRecord[]>([])
@@ -59,15 +61,31 @@ export function SolanaTab({
   useEffect(() => {
     if (!cfg) return
     let cancelled = false
+    const programId = new PublicKey(cfg.program_id)
     const poll = () => {
       const pk = new PublicKey(cfg.league_pda)
-      connection.getBalance(pk).then((b) => {
-        if (!cancelled) setBalance(b)
-      }).catch(() => {})
+      connection
+        .getAccountInfo(pk)
+        .then((info) => {
+          if (cancelled) return
+          if (!info) {
+            setBalance(null)
+            setEscrowInitialized(false)
+            return
+          }
+          setBalance(info.lamports)
+          setEscrowInitialized(
+            info.owner.equals(programId) && info.data.length > 0,
+          )
+        })
+        .catch(() => {})
     }
     poll()
     const iv = setInterval(poll, 8000)
-    return () => { cancelled = true; clearInterval(iv) }
+    return () => {
+      cancelled = true
+      clearInterval(iv)
+    }
   }, [cfg, connection])
 
   const addTx = useCallback((label: string, sig: string) => {
@@ -155,7 +173,10 @@ export function SolanaTab({
     )
     const amount = Math.max(0, balance - rentExempt)
     if (amount <= 0) {
-      setError('Balance only covers rent-exempt minimum')
+      setError(
+        `Nothing to withdraw: the vault must keep ~${(rentExempt / 1e9).toFixed(4)} SOL for rent. ` +
+          `Current balance ${(balance / 1e9).toFixed(4)} SOL. Use Pay Buy-in to add escrow, or you already paid out the rest.`,
+      )
       return
     }
     const draft = await apiFetch<InstructionDraft>(
@@ -184,6 +205,23 @@ export function SolanaTab({
     })
     await sendIx('Distribute Payout', ix)
   }, [cfg, wallet.publicKey, payoutWinner, balance, connection, sendIx])
+
+  const handleCloseEscrow = useCallback(async () => {
+    if (!cfg || !wallet.publicKey) return
+    const draft = await apiFetch<InstructionDraft>('/api/chain/ix/close-league')
+    const programId = new PublicKey(cfg.program_id)
+    const leaguePda = new PublicKey(cfg.league_pda)
+    const data = Buffer.from(draft.data_base64, 'base64')
+    const ix = new TransactionInstruction({
+      programId,
+      data,
+      keys: [
+        { pubkey: wallet.publicKey, isSigner: true, isWritable: true },
+        { pubkey: leaguePda, isSigner: false, isWritable: true },
+      ],
+    })
+    await sendIx('Close Escrow', ix)
+  }, [cfg, wallet.publicKey, sendIx])
 
   if (!league) return null
 
@@ -241,14 +279,20 @@ export function SolanaTab({
             </div>
           )}
 
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {/* Init Escrow */}
             <ActionBtn
               label="Initialize Escrow"
-              desc="Create on-chain vault PDA"
+              desc={
+                escrowInitialized
+                  ? 'Vault already exists for this commissioner on devnet'
+                  : 'Create on-chain vault PDA'
+              }
               onClick={handleInitEscrow}
               busy={busy === 'Initialize Escrow'}
-              disabled={!wallet.publicKey || !isCommissioner}
+              disabled={
+                !wallet.publicKey || !isCommissioner || escrowInitialized
+              }
               icon="M12 6v6m0 0v6m0-6h6m-6 0H6"
             />
 
@@ -270,6 +314,17 @@ export function SolanaTab({
               busy={busy === 'Distribute Payout'}
               disabled={!wallet.publicKey || !isCommissioner}
               icon="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
+
+            <ActionBtn
+              label="Close Escrow"
+              desc="Return all vault SOL to you; then you can Initialize again"
+              onClick={handleCloseEscrow}
+              busy={busy === 'Close Escrow'}
+              disabled={
+                !wallet.publicKey || !isCommissioner || !escrowInitialized
+              }
+              icon="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
             />
           </div>
 
