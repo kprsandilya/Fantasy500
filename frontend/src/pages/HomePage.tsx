@@ -167,7 +167,7 @@ export function HomePage() {
           </h1>
 
           <p className="text-slate-400 max-w-md mx-auto text-base leading-relaxed">
-            Fantasy football meets the stock market. Draft from the S&P 500,
+            Fantasy meets the stock market. Draft from the S&P 500,
             score weekly price moves, and compete for on-chain prizes.
           </p>
 
