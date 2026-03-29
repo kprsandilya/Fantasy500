@@ -1486,6 +1486,8 @@ async fn get_stock_alerts(
 
     let alerts = quotes::fetch_stock_alerts(&symbols).await;
     Ok(Json(alerts))
+}
+
 #[derive(Deserialize)]
 pub struct PayoutQuery {
     pub amount: u64,
