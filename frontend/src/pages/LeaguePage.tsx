@@ -14,9 +14,9 @@ import {
   type Team,
 } from '../api'
 import { useAuth } from '../AuthContext'
-import { LeagueTab, RosterTab, DraftTab, MatchupTab, CommissionerReportTab, SettingsTab } from '../components/league-tabs'
+import { LeagueTab, RosterTab, DraftTab, MatchupTab, CommissionerReportTab, SettingsTab, SolanaTab } from '../components/league-tabs'
 
-type TabId = 'league' | 'roster' | 'draft' | 'matchup' | 'report' | 'settings'
+type TabId = 'league' | 'roster' | 'draft' | 'matchup' | 'report' | 'solana' | 'settings'
 
 const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'league', label: 'League', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1' },
@@ -24,6 +24,7 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'draft', label: 'Draft', icon: 'M13 10V3L4 14h7v7l9-11h-7z' },
   { id: 'matchup', label: 'Matchup', icon: 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z' },
   { id: 'report', label: 'Report', icon: 'M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z' },
+  { id: 'solana', label: 'On-Chain', icon: 'M13 7h8m0 0v8m0-8l-8 8-4-4-6 6' },
   { id: 'settings', label: 'Settings', icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z' },
 ]
 
@@ -220,6 +221,9 @@ export function LeaguePage() {
             isCommissioner={isCommissioner}
             walletRef={walletRef}
           />
+        )}
+        {activeTab === 'solana' && (
+          <SolanaTab league={league} teams={teams} isCommissioner={isCommissioner} />
         )}
         {activeTab === 'settings' && (
           <SettingsTab

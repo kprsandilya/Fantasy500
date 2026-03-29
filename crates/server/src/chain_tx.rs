@@ -123,3 +123,37 @@ pub fn commit_roster_instruction(
         data_base64: STANDARD.encode(bytes),
     })
 }
+
+#[derive(BorshSerialize)]
+pub struct DistributePayoutArgs {
+    pub amount: u64,
+}
+
+pub fn distribute_payout_instruction(
+    cfg: &Config,
+    amount: u64,
+) -> AppResult<InstructionDraft> {
+    let bytes = encode_args(
+        "distribute_payout",
+        DistributePayoutArgs { amount },
+    )?;
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    Ok(InstructionDraft {
+        program_id: cfg.program_id.clone(),
+        instruction_name: "distribute_payout".into(),
+        data_base64: STANDARD.encode(bytes),
+    })
+}
+
+/// League PDA address: seeds = [b"league", admin_pubkey].
+pub fn league_pda(cfg: &Config, admin: &str) -> AppResult<String> {
+    let program = program_pubkey(cfg)?;
+    let admin_pk: Pubkey = admin
+        .parse()
+        .map_err(|_| AppError::BadRequest("invalid admin wallet".into()))?;
+    let (pda, _bump) = Pubkey::find_program_address(
+        &[b"league", admin_pk.as_ref()],
+        &program,
+    );
+    Ok(pda.to_string())
+}
