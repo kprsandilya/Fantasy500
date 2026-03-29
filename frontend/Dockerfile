@@ -1,7 +1,7 @@
 # ── Stage 1: Build the Vite app ──
 FROM node:20-alpine AS builder
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@8 --activate
 
 WORKDIR /app
 COPY package.json pnpm-lock.yaml ./
