@@ -1,0 +1,10 @@
+\\?\C:\Users\kprsa\Documents\CodingProjects\Fantasy500\programs\fantasy_league\target\debug\deps\cargo_toml-0d81135e5535b796.d: C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\cargo_toml-0.19.2\src\cargo_toml.rs C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\cargo_toml-0.19.2\src\afs.rs C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\cargo_toml-0.19.2\src\error.rs C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\cargo_toml-0.19.2\src\inheritable.rs
+
+\\?\C:\Users\kprsa\Documents\CodingProjects\Fantasy500\programs\fantasy_league\target\debug\deps\libcargo_toml-0d81135e5535b796.rlib: C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\cargo_toml-0.19.2\src\cargo_toml.rs C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\cargo_toml-0.19.2\src\afs.rs C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\cargo_toml-0.19.2\src\error.rs C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\cargo_toml-0.19.2\src\inheritable.rs
+
+\\?\C:\Users\kprsa\Documents\CodingProjects\Fantasy500\programs\fantasy_league\target\debug\deps\libcargo_toml-0d81135e5535b796.rmeta: C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\cargo_toml-0.19.2\src\cargo_toml.rs C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\cargo_toml-0.19.2\src\afs.rs C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\cargo_toml-0.19.2\src\error.rs C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\cargo_toml-0.19.2\src\inheritable.rs
+
+C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\cargo_toml-0.19.2\src\cargo_toml.rs:
+C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\cargo_toml-0.19.2\src\afs.rs:
+C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\cargo_toml-0.19.2\src\error.rs:
+C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\cargo_toml-0.19.2\src\inheritable.rs:

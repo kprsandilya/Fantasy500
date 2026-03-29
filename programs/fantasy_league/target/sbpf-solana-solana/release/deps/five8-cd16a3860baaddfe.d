@@ -1,0 +1,11 @@
+\\?\C:\Users\kprsa\Documents\CodingProjects\Fantasy500\programs\fantasy_league\target\sbpf-solana-solana\release\deps\five8-cd16a3860baaddfe.d: C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\five8-0.2.1\src\lib.rs C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\five8-0.2.1\src\decode.rs C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\five8-0.2.1\src\encode.rs C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\five8-0.2.1\src\unlikely.rs C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\five8-0.2.1\src\../README.md
+
+\\?\C:\Users\kprsa\Documents\CodingProjects\Fantasy500\programs\fantasy_league\target\sbpf-solana-solana\release\deps\libfive8-cd16a3860baaddfe.rlib: C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\five8-0.2.1\src\lib.rs C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\five8-0.2.1\src\decode.rs C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\five8-0.2.1\src\encode.rs C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\five8-0.2.1\src\unlikely.rs C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\five8-0.2.1\src\../README.md
+
+\\?\C:\Users\kprsa\Documents\CodingProjects\Fantasy500\programs\fantasy_league\target\sbpf-solana-solana\release\deps\libfive8-cd16a3860baaddfe.rmeta: C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\five8-0.2.1\src\lib.rs C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\five8-0.2.1\src\decode.rs C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\five8-0.2.1\src\encode.rs C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\five8-0.2.1\src\unlikely.rs C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\five8-0.2.1\src\../README.md
+
+C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\five8-0.2.1\src\lib.rs:
+C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\five8-0.2.1\src\decode.rs:
+C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\five8-0.2.1\src\encode.rs:
+C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\five8-0.2.1\src\unlikely.rs:
+C:\Users\kprsa\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\five8-0.2.1\src\../README.md:
