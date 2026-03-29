@@ -1,6 +1,10 @@
 # ── Stage 1: Build server & worker binaries ──
 FROM rust:1.83-bookworm AS builder
 
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        pkg-config libssl-dev protobuf-compiler cmake libudev-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Cache dependency build: copy manifests first
