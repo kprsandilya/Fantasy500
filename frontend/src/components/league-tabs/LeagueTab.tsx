@@ -101,8 +101,8 @@ export function LeagueTab({
             },
             { label: 'Weeks', value: league.settings?.snake_rounds ?? 10 },
             {
-              label: 'Roster Size',
-              value: league.settings?.roster_size ?? 10,
+              label: 'Starters',
+              value: league.settings?.roster_size ?? 8,
             },
           ].map((s) => (
             <div

@@ -106,7 +106,7 @@ fn starter_symbols(picks: &[DraftPick], team_id: ObjectId) -> Vec<String> {
     let mut mine: Vec<&DraftPick> = picks.iter().filter(|p| p.team_id == team_id).collect();
     mine.sort_by_key(|p| p.overall);
     mine.into_iter()
-        .take(5)
+        .take(8)
         .map(|p| p.symbol.clone())
         .collect()
 }
@@ -126,7 +126,7 @@ fn roster_from_picks(
         .map(|(i, p)| RosterEntry {
             symbol: p.symbol.clone(),
             company_name: p.company_name.clone(),
-            slot: if i < 5 {
+            slot: if i < 8 {
                 RosterSlot::Starter
             } else {
                 RosterSlot::Bench
@@ -253,7 +253,7 @@ async fn main() -> anyhow::Result<()> {
         commissioner_wallet: L1_BOTS[0].into(),
         status: LeagueStatus::Completed,
         settings: LeagueSettings {
-            roster_size: 10,
+            roster_size: 8,
             snake_rounds: 10,
             waiver_period_hours: 48,
             scoring_week_anchor: "Mon".into(),
@@ -333,7 +333,7 @@ async fn main() -> anyhow::Result<()> {
         commissioner_wallet: my_wallet.clone(),
         status: LeagueStatus::Active,
         settings: LeagueSettings {
-            roster_size: 10,
+            roster_size: 8,
             snake_rounds: 10,
             waiver_period_hours: 48,
             scoring_week_anchor: "Mon".into(),

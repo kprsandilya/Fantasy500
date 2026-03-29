@@ -36,7 +36,7 @@ export function SettingsTab({
     setEditTeams(league.team_count)
     setEditBuyIn(league.buy_in_lamports ? String(league.buy_in_lamports / 1e9) : '')
     setEditRounds(league.settings?.snake_rounds ?? 10)
-    setEditRoster(league.settings?.roster_size ?? 10)
+    setEditRoster(league.settings?.roster_size ?? 8)
     setEditTimer(league.settings?.draft_timer_seconds ?? 0)
     setEditing(true)
     setEditMsg(null)
@@ -77,7 +77,7 @@ export function SettingsTab({
     { label: 'Season Year', value: league.season_year },
     { label: 'Buy-in', value: league.buy_in_lamports ? `${(league.buy_in_lamports / 1e9).toFixed(2)} SOL` : 'Free' },
     { label: 'Snake Rounds', value: league.settings?.snake_rounds ?? 10 },
-    { label: 'Roster Size', value: league.settings?.roster_size ?? 10 },
+    { label: 'Roster Size (starters)', value: league.settings?.roster_size ?? 8 },
     { label: 'Draft Pick Timer', value: league.settings?.draft_timer_seconds ? `${league.settings.draft_timer_seconds}s` : 'Off' },
     { label: 'Waiver Period', value: `${league.settings?.waiver_period_hours ?? 24}h` },
     { label: 'Scoring Anchor', value: league.settings?.scoring_week_anchor ?? 'monday' },

@@ -24,7 +24,7 @@ pub struct LeagueSettings {
 impl Default for LeagueSettings {
     fn default() -> Self {
         Self {
-            roster_size: 10,
+            roster_size: 8,
             snake_rounds: 10,
             waiver_period_hours: 48,
             scoring_week_anchor: "Mon".to_string(),

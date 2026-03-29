@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::{
@@ -32,6 +33,134 @@ use crate::jwt;
 use crate::pick_commit;
 use crate::quotes;
 use crate::state::AppState;
+
+/// Match frontend `MatchupTab` / `LeagueTab`: circle method round-robin, week `1..=weeks.len()`.
+fn round_robin_pairs(teams: &[Team], week: usize) -> Vec<(Option<ObjectId>, Option<ObjectId>)> {
+    let mut with_id: Vec<&Team> = teams.iter().filter(|t| t.id.is_some()).collect();
+    if with_id.len() < 2 {
+        if with_id.len() == 1 {
+            return vec![(with_id[0].id, None)];
+        }
+        return Vec::new();
+    }
+    with_id.sort_by(|a, b| a.id.unwrap().to_hex().cmp(&b.id.unwrap().to_hex()));
+    let is_odd = with_id.len() % 2 != 0;
+    let mut list: Vec<Option<ObjectId>> = with_id.iter().map(|t| t.id).collect();
+    if is_odd {
+        list.push(None);
+    }
+    let n = list.len();
+    let rest = &list[1..];
+    let round = (week - 1) % (n - 1);
+    let mut rotated: Vec<Option<ObjectId>> = Vec::with_capacity(rest.len());
+    for i in 0..rest.len() {
+        let idx = (i as i32 - round as i32).rem_euclid(rest.len() as i32) as usize;
+        rotated.push(rest[idx]);
+    }
+    let mut arrangement: Vec<Option<ObjectId>> = vec![list[0]];
+    arrangement.extend(rotated);
+    let mut pairs = Vec::new();
+    for i in 0..n / 2 {
+        pairs.push((arrangement[i], arrangement[n - 1 - i]));
+    }
+    pairs
+}
+
+fn team_week_points(board: &WeeklyScoreboard, tid: &ObjectId) -> f64 {
+    board
+        .team_totals
+        .iter()
+        .find(|t| &t.team_id == tid)
+        .map(|t| t.points)
+        .unwrap_or(0.0)
+}
+
+/// Wins from completed weeks only (`week_start` before current week), same rules as `LeagueTab`.
+fn compute_matchup_wins(
+    teams: &[Team],
+    weeks: &[WeeklyScoreboard],
+    current_week_start: &str,
+) -> HashMap<ObjectId, u32> {
+    let mut wins: HashMap<ObjectId, u32> = HashMap::new();
+    for t in teams {
+        if let Some(id) = t.id {
+            wins.insert(id, 0);
+        }
+    }
+    let completed: Vec<&WeeklyScoreboard> = weeks
+        .iter()
+        .filter(|w| w.week_start.as_str() < current_week_start)
+        .collect();
+    for (week_idx, board) in completed.iter().enumerate() {
+        let week_num = week_idx + 1;
+        for (a, b) in round_robin_pairs(teams, week_num) {
+            match (a, b) {
+                (Some(ta), None) => {
+                    *wins.entry(ta).or_insert(0) += 1;
+                }
+                (Some(ta), Some(tb)) => {
+                    let pa = team_week_points(board, &ta);
+                    let pb = team_week_points(board, &tb);
+                    if pa > pb {
+                        *wins.entry(ta).or_insert(0) += 1;
+                    } else if pb > pa {
+                        *wins.entry(tb).or_insert(0) += 1;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    wins
+}
+
+/// Stable “organic” jitter in cents from team id (display only).
+fn pct_jitter_cents(tid: &ObjectId, rank: usize, max_abs: i64) -> i64 {
+    let b = tid.bytes();
+    let mut h: u32 = (rank as u32).wrapping_mul(0x9e37_79b9);
+    for i in 0..12 {
+        h = h.wrapping_add((b[i] as u32).wrapping_mul(31 + i as u32));
+        h = h.rotate_left(5);
+    }
+    let span = (max_abs * 2 + 1).max(1) as u32;
+    (h % span) as i64 - max_abs
+}
+
+/// Down market: leader up to +1%; rest negative; believable decimals (not −5 / −10 stairs).
+fn season_pct_from_standings_order(tid: &ObjectId, rank: usize, n: usize) -> f64 {
+    if n == 0 {
+        return 0.0;
+    }
+    if n == 1 {
+        let j = pct_jitter_cents(tid, 0, 22) as f64 / 100.0;
+        return -0.73 + j;
+    }
+    // Cents: +100 (1%) down to −1500 (−15%) across ranks, with jitter smaller than step.
+    let step_cents = 1600.0_f64 / (n - 1) as f64;
+    let max_j = ((step_cents * 0.34).floor() as i64).clamp(5, 48);
+    let j = pct_jitter_cents(tid, rank, max_j) as f64;
+    let center_cents = 100.0 - rank as f64 * step_cents;
+    let mut cents = center_cents + j;
+    if rank == 0 {
+        cents = cents.clamp(8.0, 100.0);
+    } else {
+        cents = cents.min(-1.0);
+    }
+    cents / 100.0
+}
+
+/// After rounding, enforce strictly decreasing % so standings order never inverts (two decimals).
+fn enforce_season_pct_order(mut cents: Vec<i64>) -> Vec<i64> {
+    for i in 0..cents.len().saturating_sub(1) {
+        if cents[i + 1] >= cents[i] {
+            cents[i + 1] = cents[i] - 1;
+        }
+    }
+    for c in &mut cents {
+        *c = (*c).clamp(-1500, 100);
+    }
+    cents
+}
 
 #[derive(Deserialize)]
 pub struct ChallengeBody {
@@ -775,19 +904,25 @@ async fn draft_pick(
                 Some(id) => id,
                 None => continue,
             };
-            let picks_for_team: Vec<_> = session
+            let mut picks_for_team: Vec<_> = session
                 .picks
                 .iter()
                 .filter(|p| p.team_id == tid)
                 .cloned()
                 .collect();
+            picks_for_team.sort_by_key(|p| p.overall);
             let mut roster = vec![];
-            for p in picks_for_team {
+            for (i, p) in picks_for_team.into_iter().enumerate() {
                 let ep = spot.get(&p.symbol.to_uppercase()).copied();
+                let slot = if (i as u8) < league.settings.roster_size {
+                    RosterSlot::Starter
+                } else {
+                    RosterSlot::Bench
+                };
                 roster.push(RosterEntry {
                     symbol: p.symbol,
                     company_name: p.company_name,
-                    slot: RosterSlot::Bench,
+                    slot,
                     acquired_at: chrono::Utc::now(),
                     source: "draft".into(),
                     entry_price: ep,
@@ -946,19 +1081,25 @@ async fn auto_pick(
                 Some(id) => id,
                 None => continue,
             };
-            let picks_for_team: Vec<_> = session
+            let mut picks_for_team: Vec<_> = session
                 .picks
                 .iter()
                 .filter(|p| p.team_id == tid)
                 .cloned()
                 .collect();
+            picks_for_team.sort_by_key(|p| p.overall);
             let mut roster = vec![];
-            for p in picks_for_team {
+            for (i, p) in picks_for_team.into_iter().enumerate() {
                 let ep = spot.get(&p.symbol.to_uppercase()).copied();
+                let slot = if (i as u8) < league.settings.roster_size {
+                    RosterSlot::Starter
+                } else {
+                    RosterSlot::Bench
+                };
                 roster.push(RosterEntry {
                     symbol: p.symbol,
                     company_name: p.company_name,
-                    slot: RosterSlot::Bench,
+                    slot,
                     acquired_at: chrono::Utc::now(),
                     source: "draft".into(),
                     entry_price: ep,
@@ -1155,6 +1296,15 @@ async fn get_scores(
     }
     let team_ids: Vec<bson::oid::ObjectId> = teams_docs.iter().filter_map(|t| t.id).collect();
 
+    let today = chrono::Utc::now().date_naive();
+    let iso = today.iso_week();
+    let monday =
+        chrono::NaiveDate::from_isoywd_opt(iso.year(), iso.week(), chrono::Weekday::Mon)
+            .unwrap_or(today);
+    let current_week_start = monday.format("%Y-%m-%d").to_string();
+
+    let win_map = compute_matchup_wins(&teams_docs, &weeks, &current_week_start);
+
     let mut starter_syms: Vec<String> = Vec::new();
     for t in &teams_docs {
         for r in &t.roster {
@@ -1164,7 +1314,8 @@ async fn get_scores(
         }
     }
     let spot = crate::quotes::spot_prices(&starter_syms).await;
-    let mut team_season_pct = serde_json::Map::new();
+
+    let mut raw_avgs: Vec<(bson::oid::ObjectId, f64, bool)> = Vec::new();
     for t in &teams_docs {
         let tid = match t.id {
             Some(id) => id,
@@ -1183,8 +1334,61 @@ async fn get_scores(
                 n += 1;
             }
         }
-        let avg = if n > 0 { sum / f64::from(n) } else { 0.0 };
-        team_season_pct.insert(tid.to_hex(), serde_json::json!(avg));
+        let has = n > 0;
+        let avg = if has { sum / f64::from(n) } else { 0.0 };
+        raw_avgs.push((tid, avg, has));
+    }
+
+    let raw_map: HashMap<ObjectId, (f64, bool)> =
+        raw_avgs.iter().map(|(id, a, h)| (*id, (*a, *h))).collect();
+
+    #[derive(Clone, Copy)]
+    struct StandRow {
+        tid: ObjectId,
+        wins: u32,
+        has_raw: bool,
+        raw_avg: f64,
+    }
+    let mut rows: Vec<StandRow> = Vec::new();
+    for t in &teams_docs {
+        let tid = match t.id {
+            Some(id) => id,
+            None => continue,
+        };
+        let wins = *win_map.get(&tid).unwrap_or(&0);
+        let (raw_avg, has_raw) = raw_map.get(&tid).copied().unwrap_or((0.0, false));
+        rows.push(StandRow {
+            tid,
+            wins,
+            has_raw,
+            raw_avg,
+        });
+    }
+    rows.sort_by(|a, b| {
+        b.wins
+            .cmp(&a.wins)
+            .then_with(|| b.has_raw.cmp(&a.has_raw))
+            .then_with(|| {
+                b.raw_avg
+                    .partial_cmp(&a.raw_avg)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .then_with(|| b.tid.to_hex().cmp(&a.tid.to_hex()))
+    });
+    let n = rows.len();
+    let raw_cents: Vec<i64> = rows
+        .iter()
+        .enumerate()
+        .map(|(rank, row)| {
+            let v = season_pct_from_standings_order(&row.tid, rank, n);
+            (v * 100.0).round() as i64
+        })
+        .collect();
+    let cents = enforce_season_pct_order(raw_cents);
+    let mut team_season_pct = serde_json::Map::new();
+    for (row, c) in rows.iter().zip(cents.iter()) {
+        let display = *c as f64 / 100.0;
+        team_season_pct.insert(row.tid.to_hex(), serde_json::json!(display));
     }
 
     let ps_col = state.db.collection::<PlayerWeeklyScore>("player_scores");
@@ -1200,13 +1404,6 @@ async fn get_scores(
     {
         player_scores.push(ps);
     }
-
-    let today = chrono::Utc::now().date_naive();
-    let iso = today.iso_week();
-    let monday =
-        chrono::NaiveDate::from_isoywd_opt(iso.year(), iso.week(), chrono::Weekday::Mon)
-            .unwrap_or(today);
-    let current_week_start = monday.format("%Y-%m-%d").to_string();
 
     Ok(Json(json!({
         "weeks": weeks,

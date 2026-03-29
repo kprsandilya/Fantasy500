@@ -36,7 +36,7 @@ export function RosterTab({
   const [dropTarget, setDropTarget] = useState<string | null>(null)
   const [addingSymbol, setAddingSymbol] = useState<string | null>(null)
 
-  const rosterSize = league?.settings?.roster_size ?? 10
+  const rosterSize = league?.settings?.roster_size ?? 8
   const isMyRoster = useMemo(() => {
     if (!myTeam) return false
     if (selectedTeamId) return oidString(myTeam._id) === selectedTeamId
@@ -212,7 +212,8 @@ export function RosterTab({
     [token, id, patchTeam],
   )
 
-  const totalRosterSlots = rosterSize + (league?.settings?.snake_rounds ?? 10)
+  /** One pick per snake round; starters + bench = snake_rounds. */
+  const totalRosterSlots = league?.settings?.snake_rounds ?? 10
   const canAddWithoutDrop = viewTeam ? viewTeam.roster.length < totalRosterSlots : false
 
   return (
