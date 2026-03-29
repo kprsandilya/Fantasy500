@@ -9,6 +9,7 @@ import {
   type League,
   type QuoteItem,
 } from '../api'
+import { NumberFieldInt, NumberFieldSol } from '../components/NumberField'
 import { useAuth } from '../AuthContext'
 
 const STATUS_STYLE: Record<string, string> = {
@@ -111,7 +112,7 @@ export function HomePage() {
   const [leagues, setLeagues] = useState<League[]>([])
   const [name, setName] = useState('Wall Street West')
   const [teams, setTeams] = useState(4)
-  const [buyIn, setBuyIn] = useState<number | ''>('')
+  const [buyIn, setBuyIn] = useState('')
   const [err, setErr] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [showForm, setShowForm] = useState(false)
@@ -132,7 +133,9 @@ export function HomePage() {
         name,
         team_count: teams,
         buy_in_lamports:
-          buyIn === '' ? undefined : Math.round(Number(buyIn) * 1_000_000_000),
+          buyIn.trim() === ''
+            ? undefined
+            : Math.round(Number(buyIn) * 1_000_000_000),
       })
       setLeagues((prev) => [l, ...prev])
       setShowForm(false)
@@ -240,39 +243,26 @@ export function HomePage() {
               </button>
             </div>
             <form className="grid gap-3 sm:grid-cols-3" onSubmit={onCreate}>
-              <label className="space-y-1.5 text-sm">
-                <span className="text-slate-400 text-xs font-medium">League name</span>
-                <input
-                  className="w-full rounded-xl bg-slate-950/80 border border-slate-700/50 px-3 py-2.5 text-sm placeholder:text-slate-600 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600/30 focus:outline-none transition-all"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Wall Street West"
-                />
+              <label className="space-y-1.5 text-sm sm:col-span-1">
+                <span className="block text-xs font-medium text-slate-400">League name</span>
+                <div className="rounded-xl border border-slate-700/50 bg-gradient-to-b from-slate-900/95 to-slate-950/95 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] transition-all focus-within:border-emerald-500/45 focus-within:shadow-[0_0_0_3px_rgba(16,185,129,0.14)] hover:border-slate-600/60">
+                  <input
+                    className="w-full rounded-xl border-0 bg-transparent px-3 py-2.5 text-sm text-white placeholder:text-slate-600 focus:ring-0 focus:outline-none"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="e.g. Wall Street West"
+                  />
+                </div>
               </label>
-              <label className="space-y-1.5 text-sm">
-                <span className="text-slate-400 text-xs font-medium">Teams</span>
-                <input
-                  type="number"
-                  min={2}
-                  max={32}
-                  className="w-full rounded-xl bg-slate-950/80 border border-slate-700/50 px-3 py-2.5 text-sm focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600/30 focus:outline-none transition-all"
-                  value={teams}
-                  onChange={(e) => setTeams(Number(e.target.value))}
-                />
-              </label>
-              <label className="space-y-1.5 text-sm">
-                <span className="text-slate-400 text-xs font-medium">Buy-in (SOL)</span>
-                <input
-                  type="number"
-                  step="0.01"
-                  className="w-full rounded-xl bg-slate-950/80 border border-slate-700/50 px-3 py-2.5 text-sm placeholder:text-slate-600 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600/30 focus:outline-none transition-all"
-                  value={buyIn}
-                  placeholder="Free"
-                  onChange={(e) =>
-                    setBuyIn(e.target.value === '' ? '' : Number(e.target.value))
-                  }
-                />
-              </label>
+              <NumberFieldInt
+                label="Teams"
+                value={teams}
+                onChange={setTeams}
+                min={2}
+                max={32}
+                emptyFallback={4}
+              />
+              <NumberFieldSol label="Buy-in" value={buyIn} onChange={setBuyIn} placeholder="Free" />
               {err && <p className="text-sm text-red-400 sm:col-span-3">{err}</p>}
               <div className="sm:col-span-3 pt-1">
                 <button

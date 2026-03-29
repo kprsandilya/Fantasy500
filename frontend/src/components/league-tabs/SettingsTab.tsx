@@ -1,5 +1,6 @@
 import { type FormEvent, useState } from 'react'
 import { updateLeague, type League } from '../../api'
+import { NumberFieldInt, NumberFieldSol } from '../NumberField'
 
 export function SettingsTab({
   id,
@@ -24,7 +25,7 @@ export function SettingsTab({
 
   const [editName, setEditName] = useState('')
   const [editTeams, setEditTeams] = useState(4)
-  const [editBuyIn, setEditBuyIn] = useState<number | ''>('')
+  const [editBuyIn, setEditBuyIn] = useState('')
   const [editRounds, setEditRounds] = useState(10)
   const [editRoster, setEditRoster] = useState(10)
   const [editTimer, setEditTimer] = useState(0)
@@ -33,7 +34,7 @@ export function SettingsTab({
     if (!league) return
     setEditName(league.name)
     setEditTeams(league.team_count)
-    setEditBuyIn(league.buy_in_lamports ? league.buy_in_lamports / 1e9 : '')
+    setEditBuyIn(league.buy_in_lamports ? String(league.buy_in_lamports / 1e9) : '')
     setEditRounds(league.settings?.snake_rounds ?? 10)
     setEditRoster(league.settings?.roster_size ?? 10)
     setEditTimer(league.settings?.draft_timer_seconds ?? 0)
@@ -50,7 +51,8 @@ export function SettingsTab({
       const updated = await updateLeague(token, id, {
         name: editName || undefined,
         team_count: editTeams,
-        buy_in_lamports: editBuyIn === '' ? undefined : Math.round(Number(editBuyIn) * 1e9),
+        buy_in_lamports:
+          editBuyIn.trim() === '' ? undefined : Math.round(Number(editBuyIn) * 1e9),
         snake_rounds: editRounds,
         roster_size: editRoster,
         draft_timer_seconds: editTimer,
@@ -120,30 +122,49 @@ export function SettingsTab({
             </button>
           </div>
           <form className="grid gap-4 sm:grid-cols-2" onSubmit={handleSave}>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-400">League name</span>
-              <input className="w-full rounded-md bg-slate-950 border border-slate-700 px-3 py-2 focus:border-emerald-600 focus:outline-none" value={editName} onChange={(e) => setEditName(e.target.value)} />
+            <label className="space-y-1.5 text-sm sm:col-span-2">
+              <span className="block text-xs font-medium text-slate-400">League name</span>
+              <div className="rounded-xl border border-slate-700/50 bg-gradient-to-b from-slate-900/95 to-slate-950/95 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] transition-all focus-within:border-emerald-500/45 focus-within:shadow-[0_0_0_3px_rgba(16,185,129,0.14)] hover:border-slate-600/60">
+                <input
+                  className="w-full rounded-xl border-0 bg-transparent px-3 py-2.5 text-sm text-white focus:ring-0 focus:outline-none"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                />
+              </div>
             </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-400">Teams</span>
-              <input type="number" min={2} max={32} className="w-full rounded-md bg-slate-950 border border-slate-700 px-3 py-2 focus:border-emerald-600 focus:outline-none" value={editTeams} onChange={(e) => setEditTeams(Number(e.target.value))} />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-400">Snake rounds</span>
-              <input type="number" min={1} max={30} className="w-full rounded-md bg-slate-950 border border-slate-700 px-3 py-2 focus:border-emerald-600 focus:outline-none" value={editRounds} onChange={(e) => setEditRounds(Number(e.target.value))} />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-400">Roster size</span>
-              <input type="number" min={1} max={30} className="w-full rounded-md bg-slate-950 border border-slate-700 px-3 py-2 focus:border-emerald-600 focus:outline-none" value={editRoster} onChange={(e) => setEditRoster(Number(e.target.value))} />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-400">Buy-in (SOL, blank = free)</span>
-              <input type="number" step="0.01" min={0} className="w-full rounded-md bg-slate-950 border border-slate-700 px-3 py-2 focus:border-emerald-600 focus:outline-none" value={editBuyIn} onChange={(e) => setEditBuyIn(e.target.value === '' ? '' : Number(e.target.value))} />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-400">Pick timer (seconds, 0 = off)</span>
-              <input type="number" min={0} max={600} className="w-full rounded-md bg-slate-950 border border-slate-700 px-3 py-2 focus:border-emerald-600 focus:outline-none" value={editTimer} onChange={(e) => setEditTimer(Number(e.target.value))} />
-            </label>
+            <NumberFieldInt
+              label="Teams"
+              value={editTeams}
+              onChange={setEditTeams}
+              min={2}
+              max={32}
+              emptyFallback={4}
+            />
+            <NumberFieldInt
+              label="Snake rounds"
+              value={editRounds}
+              onChange={setEditRounds}
+              min={1}
+              max={30}
+              emptyFallback={10}
+            />
+            <NumberFieldInt
+              label="Roster size"
+              value={editRoster}
+              onChange={setEditRoster}
+              min={1}
+              max={30}
+              emptyFallback={10}
+            />
+            <NumberFieldSol label="Buy-in (blank = free)" value={editBuyIn} onChange={setEditBuyIn} placeholder="Free" />
+            <NumberFieldInt
+              label="Pick timer (seconds, 0 = off)"
+              value={editTimer}
+              onChange={setEditTimer}
+              min={0}
+              max={600}
+              emptyFallback={0}
+            />
             <div className="sm:col-span-2 flex items-center gap-3">
               <button type="submit" disabled={saving} className="rounded-md bg-emerald-600 px-5 py-2 font-medium text-white hover:bg-emerald-500 transition-colors disabled:opacity-50">
                 {saving ? 'Saving...' : 'Save changes'}
