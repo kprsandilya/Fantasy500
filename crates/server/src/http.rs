@@ -257,6 +257,8 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/api/chain/ix/init-league", get(chain_init_ix))
         .route("/api/chain/ix/record-pick", get(chain_record_pick_ix))
         .route("/api/chain/ix/deposit-buy-in", get(chain_deposit_ix))
+        .route("/api/chain/ix/distribute-payout", get(chain_payout_ix))
+        .route("/api/chain/config", get(chain_config))
         .route("/ws", get(ws_handler))
         .layer(
             CorsLayer::new()
@@ -1484,6 +1486,33 @@ async fn get_stock_alerts(
 
     let alerts = quotes::fetch_stock_alerts(&symbols).await;
     Ok(Json(alerts))
+#[derive(Deserialize)]
+pub struct PayoutQuery {
+    pub amount: u64,
+}
+
+async fn chain_payout_ix(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<PayoutQuery>,
+) -> AppResult<Json<chain_tx::InstructionDraft>> {
+    let ix = chain_tx::distribute_payout_instruction(&state.config, q.amount)?;
+    Ok(Json(ix))
+}
+
+#[derive(Deserialize)]
+pub struct ChainConfigQuery {
+    pub admin: String,
+}
+
+async fn chain_config(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<ChainConfigQuery>,
+) -> AppResult<Json<serde_json::Value>> {
+    let pda = chain_tx::league_pda(&state.config, &q.admin)?;
+    Ok(Json(json!({
+        "program_id": state.config.program_id,
+        "league_pda": pda,
+    })))
 }
 
 // ─── Commissioner Report ───────────────────────────────────────────────
