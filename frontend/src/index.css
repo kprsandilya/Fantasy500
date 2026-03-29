@@ -12,6 +12,10 @@
   --animate-pick-in: slide-in-pick 0.3s ease-out both;
   --animate-float-slow: float-slow 8s ease-in-out infinite;
   --animate-float-slow-reverse: float-slow-reverse 9s ease-in-out infinite;
+  --animate-glow-amber: glow-pulse-amber 2s ease-in-out infinite;
+  --animate-pick-land: pick-land-flash 1.5s ease-out forwards;
+  --animate-count-bump: count-bump 0.4s ease-out;
+  --animate-ticker-mine: ticker-mine-glow 2s ease-in-out infinite;
 }
 
 @keyframes ticker-scroll {
@@ -37,6 +41,45 @@
 @keyframes float-slow-reverse {
   0%, 100% { transform: translateY(0) rotate(0deg); }
   50% { transform: translateY(10px) rotate(-1deg); }
+}
+
+@keyframes glow-pulse-amber {
+  0%, 100% { box-shadow: 0 0 15px rgba(245, 158, 11, 0.15), 0 0 30px rgba(245, 158, 11, 0.08); }
+  50% { box-shadow: 0 0 25px rgba(245, 158, 11, 0.35), 0 0 50px rgba(245, 158, 11, 0.15); }
+}
+
+@keyframes pick-land-flash {
+  0% { box-shadow: inset 0 0 20px rgba(16, 185, 129, 0.5), 0 0 15px rgba(16, 185, 129, 0.3); }
+  100% { box-shadow: none; }
+}
+
+@keyframes count-bump {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.25); }
+  100% { transform: scale(1); }
+}
+
+@keyframes urgent-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-2px); }
+  75% { transform: translateX(2px); }
+}
+
+@keyframes ticker-mine-glow {
+  0%, 100% { box-shadow: 0 0 6px rgba(16, 185, 129, 0.2); }
+  50% { box-shadow: 0 0 14px rgba(16, 185, 129, 0.5); }
+}
+
+@keyframes gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes drafted-fade {
+  0% { background-color: rgba(239, 68, 68, 0.15); opacity: 1; }
+  70% { background-color: rgba(239, 68, 68, 0.05); opacity: 0.6; }
+  100% { opacity: 0; max-height: 0; padding: 0; overflow: hidden; }
 }
 
 @utility draft-grid {

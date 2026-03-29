@@ -768,6 +768,8 @@ async fn draft_pick(
             )
             .await
             .map_err(|e| AppError::Internal(e.to_string()))?;
+        let pick_syms: Vec<String> = session.picks.iter().map(|p| p.symbol.clone()).collect();
+        let spot = crate::quotes::spot_prices(&pick_syms).await;
         for t in &mut teams {
             let tid = match t.id {
                 Some(id) => id,
@@ -781,12 +783,14 @@ async fn draft_pick(
                 .collect();
             let mut roster = vec![];
             for p in picks_for_team {
+                let ep = spot.get(&p.symbol.to_uppercase()).copied();
                 roster.push(RosterEntry {
                     symbol: p.symbol,
                     company_name: p.company_name,
                     slot: RosterSlot::Bench,
                     acquired_at: chrono::Utc::now(),
                     source: "draft".into(),
+                    entry_price: ep,
                 });
             }
             t.roster = roster;
@@ -935,6 +939,40 @@ async fn auto_pick(
             )
             .await
             .map_err(|e| AppError::Internal(e.to_string()))?;
+        let pick_syms: Vec<String> = session.picks.iter().map(|p| p.symbol.clone()).collect();
+        let spot = crate::quotes::spot_prices(&pick_syms).await;
+        for t in &mut teams {
+            let tid = match t.id {
+                Some(id) => id,
+                None => continue,
+            };
+            let picks_for_team: Vec<_> = session
+                .picks
+                .iter()
+                .filter(|p| p.team_id == tid)
+                .cloned()
+                .collect();
+            let mut roster = vec![];
+            for p in picks_for_team {
+                let ep = spot.get(&p.symbol.to_uppercase()).copied();
+                roster.push(RosterEntry {
+                    symbol: p.symbol,
+                    company_name: p.company_name,
+                    slot: RosterSlot::Bench,
+                    acquired_at: chrono::Utc::now(),
+                    source: "draft".into(),
+                    entry_price: ep,
+                });
+            }
+            t.roster = roster;
+            teams_col
+                .replace_one(
+                    mongodb::bson::doc! { "_id": t.id },
+                    t,
+                )
+                .await
+                .map_err(|e| AppError::Internal(e.to_string()))?;
+        }
     } else {
         session.clock_team_id = next_clock_team(&session, &order, league.settings.snake_rounds);
         let next_idx = session.picks.len() as u32;
@@ -1062,12 +1100,15 @@ async fn submit_waiver(
         }
     }
 
+    let spot = crate::quotes::spot_prices(&[add_sym.clone()]).await;
+    let ep = spot.get(&add_sym).copied();
     team.roster.push(RosterEntry {
         symbol: add_sym.clone(),
         company_name: add_sym.clone(),
         slot: RosterSlot::Bench,
         acquired_at: chrono::Utc::now(),
         source: "waiver".into(),
+        entry_price: ep,
     });
 
     teams_col
@@ -1104,15 +1145,46 @@ async fn get_scores(
         .find(mongodb::bson::doc! { "league_id": league_oid })
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?;
-    let mut team_ids: Vec<bson::oid::ObjectId> = Vec::new();
+    let mut teams_docs: Vec<Team> = Vec::new();
     while let Some(t) = tcur
         .try_next()
         .await
         .map_err(|e| AppError::Internal(e.to_string()))?
     {
-        if let Some(tid) = t.id {
-            team_ids.push(tid);
+        teams_docs.push(t);
+    }
+    let team_ids: Vec<bson::oid::ObjectId> = teams_docs.iter().filter_map(|t| t.id).collect();
+
+    let mut starter_syms: Vec<String> = Vec::new();
+    for t in &teams_docs {
+        for r in &t.roster {
+            if r.slot == RosterSlot::Starter {
+                starter_syms.push(r.symbol.clone());
+            }
         }
+    }
+    let spot = crate::quotes::spot_prices(&starter_syms).await;
+    let mut team_season_pct = serde_json::Map::new();
+    for t in &teams_docs {
+        let tid = match t.id {
+            Some(id) => id,
+            None => continue,
+        };
+        let mut sum = 0.0f64;
+        let mut n = 0u32;
+        for r in &t.roster {
+            if r.slot != RosterSlot::Starter {
+                continue;
+            }
+            let px = spot.get(&r.symbol.to_uppercase()).copied();
+            let ep = r.entry_price.filter(|e| *e > 0.0);
+            if let (Some(price), Some(entry)) = (px, ep) {
+                sum += (price / entry - 1.0) * 100.0;
+                n += 1;
+            }
+        }
+        let avg = if n > 0 { sum / f64::from(n) } else { 0.0 };
+        team_season_pct.insert(tid.to_hex(), serde_json::json!(avg));
     }
 
     let ps_col = state.db.collection::<PlayerWeeklyScore>("player_scores");
@@ -1140,6 +1212,7 @@ async fn get_scores(
         "weeks": weeks,
         "player_scores": player_scores,
         "current_week_start": current_week_start,
+        "team_season_pct": team_season_pct,
     })))
 }
 

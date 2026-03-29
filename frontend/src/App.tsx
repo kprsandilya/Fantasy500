@@ -5,7 +5,7 @@ import {
 } from '@solana/wallet-adapter-react'
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui'
 import { PhantomWalletAdapter } from '@solana/wallet-adapter-wallets'
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { BrowserRouter, Link, Route, Routes } from 'react-router-dom'
 import '@solana/wallet-adapter-react-ui/styles.css'
 import { AuthProvider, useAuth } from './AuthContext'
@@ -15,10 +15,49 @@ import { HomePage } from './pages/HomePage'
 import { LeaguePage } from './pages/LeaguePage'
 import { DraftPage } from './pages/DraftPage'
 import { useFantasyWs } from './useFantasyWs'
+import { getTeams, listLeagues, oidString } from './api'
+
+function useMyRosterSymbols(token: string | null): Set<string> {
+  const [symbols, setSymbols] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    if (!token) { setSymbols(new Set()); return }
+
+    let wallet: string | null = null
+    try {
+      const parts = token.split('.')
+      if (parts.length >= 2) {
+        const payload = JSON.parse(atob(parts[1]))
+        wallet = payload.wallet ?? null
+      }
+    } catch { return }
+    if (!wallet) return
+
+    const w = wallet
+    listLeagues(token).then(async (leagues) => {
+      const syms = new Set<string>()
+      await Promise.all(leagues.map(async (league) => {
+        const lid = oidString(league._id)
+        if (!lid) return
+        try {
+          const teams = await getTeams(lid)
+          const myTeam = teams.find(t => t.owner_wallet === w)
+          if (myTeam) {
+            for (const r of myTeam.roster) syms.add(r.symbol.toUpperCase())
+          }
+        } catch { /* skip */ }
+      }))
+      setSymbols(syms)
+    }).catch(() => {})
+  }, [token])
+
+  return symbols
+}
 
 function Shell() {
   const { token, signIn, signOut } = useAuth()
   const { connected } = useFantasyWs(Boolean(token))
+  const rosterSymbols = useMyRosterSymbols(token)
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -59,7 +98,7 @@ function Shell() {
           </div>
         </div>
       </header>
-      <TickerBar />
+      <TickerBar rosterSymbols={rosterSymbols.size > 0 ? rosterSymbols : undefined} />
       <main className="flex-1 max-w-5xl mx-auto px-4 py-8 w-full">
         <Routes>
           <Route path="/" element={<HomePage />} />

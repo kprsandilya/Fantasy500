@@ -17,7 +17,7 @@ export function DraftTab({
   token,
   league,
   draft,
-  teams,
+  teams: _teams,
   joinRequests,
   isCommissioner,
   myTeam,

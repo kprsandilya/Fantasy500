@@ -14,6 +14,9 @@ pub struct RosterEntry {
     pub slot: RosterSlot,
     pub acquired_at: chrono::DateTime<chrono::Utc>,
     pub source: String,
+    /// Yahoo spot price when acquired (draft / waiver). Used for season % and weekly baselines.
+    #[serde(default)]
+    pub entry_price: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

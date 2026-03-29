@@ -107,3 +107,23 @@ pub async fn get_quotes(state: &Arc<AppState>) -> Vec<QuoteItem> {
 
     all_quotes
 }
+
+/// Spot prices for a subset of symbols (draft completion, waivers). Does not update the global cache.
+pub async fn spot_prices(symbols: &[String]) -> HashMap<String, f64> {
+    if symbols.is_empty() {
+        return HashMap::new();
+    }
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (compatible; Fantasy500/0.1)")
+        .timeout(Duration::from_secs(15))
+        .build()
+        .unwrap_or_default();
+    let mut out = HashMap::new();
+    for chunk in symbols.chunks(BATCH_SIZE) {
+        let owned: Vec<String> = chunk.to_vec();
+        for q in fetch_batch(&client, &owned).await {
+            out.insert(q.symbol.to_uppercase(), q.price);
+        }
+    }
+    out
+}

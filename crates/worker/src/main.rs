@@ -1,12 +1,13 @@
-//! Background worker: ingests quote snapshots, computes weekly percentage moves,
-//! and writes `weekly_scores` + broadcasts over Mongo change streams (optional) / polling.
+//! Background worker: weekly starter % moves vs prior-week close (or acquisition price),
+//! and season-to-date % is derived on read from `entry_price` + live quotes.
 
-use std::collections::{HashMap, HashSet};
+mod yahoo;
+
+use std::collections::HashSet;
 
 use chrono::Datelike;
 use futures::TryStreamExt;
 use mongodb::Client;
-use serde::Deserialize;
 use shared::{
     load_dotenv, League, PlayerWeeklyScore, PriceBar, RosterSlot, Team, TeamWeekTotal,
     WeeklyScoreboard,
@@ -29,37 +30,9 @@ impl Config {
     }
 }
 
-#[derive(Debug, Deserialize)]
-struct YahooQuote {
-    #[serde(rename = "regularMarketPrice")]
-    regular_market_price: Option<f64>,
-}
-
-#[derive(Debug, Deserialize)]
-struct YahooResponse {
-    #[serde(rename = "quoteResponse")]
-    quote_response: YahooQuoteResponse,
-}
-
-#[derive(Debug, Deserialize)]
-struct YahooQuoteResponse {
-    result: Vec<YahooQuote>,
-}
-
-async fn yahoo_price(symbol: &str) -> anyhow::Result<f64> {
-    let url = format!(
-        "https://query1.finance.yahoo.com/v7/finance/quote?symbols={}",
-        urlencoding::encode(symbol)
-    );
-    let client = reqwest::Client::builder()
-        .user_agent("Fantasy500Worker/0.1")
-        .build()?;
-    let res: YahooResponse = client.get(&url).send().await?.json().await?;
-    res.quote_response
-        .result
-        .get(0)
-        .and_then(|q| q.regular_market_price)
-        .ok_or_else(|| anyhow::anyhow!("no price for {}", symbol))
+fn prev_week_iso(week_start: &str) -> Option<String> {
+    let d = chrono::NaiveDate::parse_from_str(week_start, "%Y-%m-%d").ok()?;
+    Some((d - chrono::Duration::weeks(1)).format("%Y-%m-%d").to_string())
 }
 
 #[tokio::main]
@@ -110,46 +83,30 @@ async fn score_league(
         teams.push(t);
     }
 
-    let mut prices: HashMap<String, f64> = HashMap::new();
-    let mut symbols = HashSet::new();
+    let mut symbols: HashSet<String> = HashSet::new();
     for t in &teams {
         for r in &t.roster {
             if r.slot == RosterSlot::Starter {
-                symbols.insert(r.symbol.clone());
+                symbols.insert(r.symbol.to_uppercase());
             }
         }
     }
+    let sym_list: Vec<String> = symbols.into_iter().collect();
+    let prices = yahoo::spot_prices(&sym_list).await;
 
-    for s in &symbols {
-        match yahoo_price(s).await {
-            Ok(p) => {
-                prices.insert(s.clone(), p);
-            }
-            Err(e) => tracing::warn!("quote {} failed: {}", s, e),
-        }
-    }
+    let bars_col = db.collection::<PriceBar>("price_bars");
+    let ps_col = db.collection::<PlayerWeeklyScore>("player_scores");
 
-    let quotes = db.collection::<shared::QuoteSnapshot>("market_quotes");
-    for (sym, price) in &prices {
-        let snap = shared::QuoteSnapshot {
-            symbol: sym.clone(),
-            price: *price,
-            currency: "USD".into(),
-            as_of: chrono::Utc::now(),
-        };
-        quotes.insert_one(snap).await.ok();
-        let bar = PriceBar {
-            symbol: sym.clone(),
-            week_start: week_start.to_string(),
-            open: *price,
-            close: *price,
-            pct_change: 0.0,
-        };
-        db.collection::<PriceBar>("price_bars")
-            .insert_one(bar)
-            .await
-            .ok();
-    }
+    let team_ids: Vec<mongodb::bson::oid::ObjectId> = teams.iter().filter_map(|t| t.id).collect();
+    ps_col
+        .delete_many(mongodb::bson::doc! {
+            "week_start": week_start,
+            "team_id": { "$in": &team_ids },
+        })
+        .await
+        .ok();
+
+    let prev_ws = prev_week_iso(week_start);
 
     let mut team_totals: Vec<TeamWeekTotal> = vec![];
     for t in &teams {
@@ -162,20 +119,55 @@ async fn score_league(
             if r.slot != RosterSlot::Starter {
                 continue;
             }
-            let pct = prices.get(&r.symbol).copied().unwrap_or(0.0);
-            points += pct;
+            let sym = r.symbol.to_uppercase();
+            let p_now = match prices.get(&sym).copied() {
+                Some(p) if p > 0.0 => p,
+                _ => {
+                    tracing::warn!("no price for {}", sym);
+                    continue;
+                }
+            };
+            let entry = r.entry_price.filter(|e| *e > 0.0).unwrap_or(p_now);
+
+            let open_w = if let Some(ref pws) = prev_ws {
+                let prev_bar = bars_col
+                    .find_one(mongodb::bson::doc! {
+                        "symbol": &sym,
+                        "week_start": pws,
+                    })
+                    .await?;
+                prev_bar
+                    .map(|b: PriceBar| b.close)
+                    .filter(|c| *c > 0.0)
+                    .unwrap_or(entry)
+            } else {
+                entry
+            };
+
+            let week_pct = (p_now / open_w - 1.0) * 100.0;
+            points += week_pct;
+
+            let bar = PriceBar {
+                symbol: sym.clone(),
+                week_start: week_start.to_string(),
+                open: open_w,
+                close: p_now,
+                pct_change: week_pct,
+            };
+            let _ = bars_col
+                .delete_one(mongodb::bson::doc! { "symbol": &sym, "week_start": week_start })
+                .await;
+            let _ = bars_col.insert_one(&bar).await;
+
             let pws = PlayerWeeklyScore {
                 wallet: t.owner_wallet.clone(),
                 team_id: tid,
-                symbol: r.symbol.clone(),
+                symbol: sym,
                 week_start: week_start.to_string(),
-                pct_change: pct,
-                points: pct,
+                pct_change: week_pct,
+                points: week_pct,
             };
-            db.collection::<PlayerWeeklyScore>("player_scores")
-                .insert_one(pws)
-                .await
-                .ok();
+            ps_col.insert_one(pws).await.ok();
         }
         team_totals.push(TeamWeekTotal {
             team_id: tid,
@@ -184,6 +176,10 @@ async fn score_league(
         });
     }
 
+    db.collection::<WeeklyScoreboard>("weekly_scores")
+        .delete_one(mongodb::bson::doc! { "league_id": league_id, "week_start": week_start })
+        .await
+        .ok();
     let board = WeeklyScoreboard {
         league_id,
         week_start: week_start.to_string(),

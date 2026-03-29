@@ -74,6 +74,8 @@ export type RosterEntry = {
   slot: string
   acquired_at: string
   source: string
+  /** Acquisition price; season % = (spot / entry - 1) × 100 averaged for starters */
+  entry_price?: number
 }
 
 export type DraftPick = {
@@ -279,6 +281,8 @@ export type ScoresResponse = {
   weeks: WeeklyScoreboard[]
   player_scores: PlayerWeeklyScore[]
   current_week_start: string
+  /** team ObjectId hex → average season % for starters (spot vs entry_price) */
+  team_season_pct?: Record<string, number>
 }
 
 export async function getScores(leagueId: string) {

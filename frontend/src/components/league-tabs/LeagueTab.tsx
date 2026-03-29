@@ -1,11 +1,13 @@
 import { useMemo } from 'react'
 import { oidString, type League, type Team, type ScoresResponse } from '../../api'
 import { generateRoundRobin } from './MatchupTab'
+import { WeeklyCard } from '../WeeklyCard'
 
 type Standing = {
   team: Team
   wins: number
-  cumulativeScore: number
+  /** Average season % for starters: (current / entry − 1) × 100 */
+  seasonPct: number
 }
 
 export function LeagueTab({
@@ -22,9 +24,9 @@ export function LeagueTab({
   scores: ScoresResponse | null
 }) {
   const standings = useMemo<Standing[]>(() => {
-    const stats = new Map<string, { wins: number; cumulativeScore: number }>()
+    const stats = new Map<string, { wins: number }>()
     for (const t of teams) {
-      stats.set(oidString(t._id) ?? '', { wins: 0, cumulativeScore: 0 })
+      stats.set(oidString(t._id) ?? '', { wins: 0 })
     }
 
     if (scores && scores.weeks.length > 0) {
@@ -36,14 +38,6 @@ export function LeagueTab({
         const board = completedWeeks[weekIdx]
         const weekNum = weekIdx + 1
         const matchups = generateRoundRobin(teams, weekNum)
-
-        for (const tt of board.team_totals) {
-          const tid = oidString(tt.team_id)
-          if (tid) {
-            const s = stats.get(tid)
-            if (s) s.cumulativeScore += tt.points
-          }
-        }
 
         for (const [teamA, teamB] of matchups) {
           if (!teamA) continue
@@ -74,17 +68,18 @@ export function LeagueTab({
       }
     }
 
+    const pctMap = scores?.team_season_pct ?? {}
+
     return [...teams]
       .map((t) => {
-        const s = stats.get(oidString(t._id) ?? '') ?? {
-          wins: 0,
-          cumulativeScore: 0,
-        }
-        return { team: t, wins: s.wins, cumulativeScore: s.cumulativeScore }
+        const tid = oidString(t._id) ?? ''
+        const s = stats.get(tid) ?? { wins: 0 }
+        const seasonPct = pctMap[tid] ?? 0
+        return { team: t, wins: s.wins, seasonPct }
       })
       .sort(
         (a, b) =>
-          b.wins - a.wins || b.cumulativeScore - a.cumulativeScore,
+          b.wins - a.wins || b.seasonPct - a.seasonPct,
       )
   }, [teams, scores])
 
@@ -144,7 +139,9 @@ export function LeagueTab({
                 <th className="text-left px-5 py-2 font-medium">Team</th>
                 <th className="text-left px-5 py-2 font-medium">Owner</th>
                 <th className="text-right px-5 py-2 font-medium">W</th>
-                <th className="text-right px-5 py-2 font-medium">Score</th>
+                <th className="text-right px-5 py-2 font-medium" title="Avg % gain on starters vs acquisition price">
+                  Season %
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/50">
@@ -174,7 +171,8 @@ export function LeagueTab({
                       {row.wins}
                     </td>
                     <td className="px-5 py-2.5 text-right tabular-nums text-slate-300">
-                      {row.cumulativeScore.toFixed(2)}
+                      {row.seasonPct >= 0 ? '+' : ''}
+                      {row.seasonPct.toFixed(2)}%
                     </td>
                   </tr>
                 )
@@ -183,6 +181,21 @@ export function LeagueTab({
           </table>
         )}
       </section>
+
+      {/* Weekly Shareable Card */}
+      {myTeam && scores && league?.status === 'active' && (
+        <section className="rounded-xl border border-slate-800 bg-slate-900/40 overflow-hidden">
+          <div className="px-5 py-3 border-b border-slate-800 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-white uppercase tracking-wider">
+              Weekly Card
+            </h2>
+            <span className="text-[0.6rem] text-slate-500">Share your performance</span>
+          </div>
+          <div className="p-5">
+            <WeeklyCard team={myTeam} scores={scores} />
+          </div>
+        </section>
+      )}
 
       {/* All players grid */}
       {teams.length > 0 && (
